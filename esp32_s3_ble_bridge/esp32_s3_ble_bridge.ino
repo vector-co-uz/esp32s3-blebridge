@@ -1,5 +1,5 @@
 /*
- * ESP32-S3 BLE HID Central -> Wired USB Composite HID Bridge (v2.9)
+ * ESP32-S3 BLE HID Central -> Wired USB Composite HID Bridge (v0.7.3)
  * - Умная индикация LED / WS2812 RGB: Поиск (4 Гц), Нет девайсов (маячок 1.6 с), Подключение (3 вспышки + горит), Отключение (5 вспышек)
  * - Индивидуальный профиль раскодировки (fmt) и чувствительности (scale) для КАЖДОГО MAC-адреса в NVS
  * - Полная поддержка джойстика Google Stadia Controller (BLE режим: 10 байт, стики, триггеры L2/R2, 15 кнопок, D-Pad)
@@ -78,8 +78,8 @@ struct BridgeConfig {
   bool bootProtocol = false;
   bool autoReconnect = true;
   uint8_t ledMode = 2;
-  uint8_t ledPin = 48;
-  uint8_t ledType = 2;    // 0=Digital LED, 1=WS2812 RGB на GPIO 21, 2=Авто-Комбо (Digital ledPin + WS2812 на GPIO 21)
+  uint8_t ledPin = 21;
+  uint8_t ledType = 1;    // WS2812 RGB на GPIO 21
   uint8_t mouseFmt = 0;   // Глобальный по умолчанию: 0=Auto(0x2A4B), 1=16b_1B, 2=16b_2B, 3=12b_1B, 4=12b_2B, 5=8b
   uint8_t kbFmt = 0;      // Глобальный по умолчанию: 0=Auto(0x2A4B), 1=Boot(0x2A22), 2=Std8B, 3=NoRes, 4=Bitmap
   uint8_t gpMode = 0;     // 0=Нативный USB Gamepad, 1=Эмуляция Клавиатура(WASD) + Мышь
@@ -481,8 +481,8 @@ void loadConfigFromNVS() {
   cfg.bootProtocol  = prefs.getBool("bootP", false);
   cfg.autoReconnect = prefs.getBool("autoRec", true);
   cfg.ledMode       = prefs.getUChar("ledM", 2);
-  cfg.ledPin        = prefs.getUChar("ledP", 48);
-  cfg.ledType       = prefs.getUChar("ledT", 2);
+  cfg.ledPin        = 21;
+  cfg.ledType       = 1;
   cfg.mouseFmt      = prefs.getUChar("mFmt", 0);
   cfg.kbFmt         = prefs.getUChar("kFmt", 0);
   cfg.gpMode        = prefs.getUChar("gpMode", 0);
@@ -538,7 +538,7 @@ void sendStatusJson() {
   if (otaInProgress) return;
   const esp_partition_t* running = esp_ota_get_running_partition();
   const char* partLabel = running ? running->label : "app0";
-  CONSOLE.print("{\"ev\":\"status\",\"ver\":\"3.1.1-LED-FIX\",\"part\":\"");
+  CONSOLE.print("{\"ev\":\"status\",\"ver\":\"0.7.3\",\"part\":\"");
   CONSOLE.print(partLabel);
   CONSOLE.print("\",\"otaFree\":");
   CONSOLE.print(ESP.getFreeSketchSpace());
@@ -1223,8 +1223,8 @@ void handleSerialCommand(const String& line) {
     cfg.swapWinAlt    = extractJsonInt(line, "swapWA", 0) == 1;
     cfg.bootProtocol  = extractJsonInt(line, "bootP", 0) == 1;
     cfg.ledMode       = extractJsonInt(line, "ledM", cfg.ledMode);
-    cfg.ledPin        = extractJsonInt(line, "ledP", cfg.ledPin);
-    cfg.ledType       = extractJsonInt(line, "ledT", cfg.ledType);
+    cfg.ledPin        = WS2812_PIN;
+    cfg.ledType       = 1;
     pinMode(cfg.ledPin, OUTPUT);
     cfg.mouseFmt      = extractJsonInt(line, "mFmt", cfg.mouseFmt);
     cfg.kbFmt         = extractJsonInt(line, "kFmt", cfg.kbFmt);
@@ -1306,8 +1306,7 @@ void setup() {
 
   pinMode(cfg.ledPin, OUTPUT);
   digitalWrite(cfg.ledPin, LOW);
-  // Гасим оба RGB-пина, которые использовали предыдущие версии, чтобы убрать защёлкнутый цвет после OTA-restart.
-  writeRgbSafe(48, 0, 0, 0);
+  // Гасим WS2812 перед запуском индикации.
   writeRgbSafe(WS2812_PIN, 0, 0, 0);
 
   Keyboard.begin();

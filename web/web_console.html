@@ -75,7 +75,7 @@
         <div>
           <div class="flex items-center gap-2">
             <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">ESP32-S3 HID Dongle Console</h1>
-            <span class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">v0.7.2</span>
+            <span id="firmwareVersionBadge" class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">FW: 0.7.3</span>
           </div>
           <p class="text-xs text-slate-400">Мост BLE Клавиатура/Мышь → Проводной USB HID</p>
         </div>
@@ -460,17 +460,15 @@
               <div class="space-y-1">
                 <label for="selLedType" class="block text-xs font-medium text-slate-300">Тип светодиода на плате</label>
                 <select id="selLedType" class="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
-                  <option value="2">Авто-Комбо (Digital + WS2812 RGB на GPIO 21)</option>
-                  <option value="0">Обычный Digital LED (HIGH/LOW)</option>
-                  <option value="1">Адресный RGB WS2812 (фиксировано GPIO 21)</option>
+                  <option value="1">Адресный RGB WS2812</option>
                 </select>
               </div>
               <div class="space-y-1">
                 <label for="inpLedPin" class="block text-xs font-medium text-slate-300">Пин светодиода (GPIO)</label>
-                <input id="inpLedPin" type="number" min="0" max="48" value="48" class="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs mono text-white focus:outline-none focus:border-indigo-500" />
+                <input id="inpLedPin" type="number" value="21" readonly class="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs mono text-white" />
               </div>
             </div>
-            <p class="text-[11px] text-slate-400">В режиме «Авто-Комбо» обычный LED работает на выбранном GPIO, а WS2812 всегда на GPIO 21. Если выбран GPIO 21, обычный digital-выход отключается во избежание конфликта.</p>
+            <p class="text-[11px] text-slate-400">На ESP32-S3-Zero светодиод WS2812 подключён к GPIO 21.</p>
 
             <!-- LED Blink Legend & Live Hardware Test -->
             <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
@@ -842,7 +840,7 @@
         bootProtocol: true,
         autoReconnect: true,
         ledMode: '2',
-        ledPin: 48
+        ledPin: 21
       }
     };
 
@@ -1175,6 +1173,10 @@
           document.getElementById('noHeartbeatBanner').classList.add('hidden');
         }
         if (msg.ev === 'status') {
+          if (msg.ver) {
+            document.getElementById('firmwareVersionBadge').textContent = `FW: ${msg.ver}`;
+            try { localStorage.setItem('esp32_hid_firmware_version', msg.ver); } catch (e) {}
+          }
           if (msg.part) {
             const freeKb = msg.otaFree ? Math.round(msg.otaFree / 1024) : 1340;
             document.getElementById('otaPartBadge').textContent = `Раздел: ${msg.part} (Свободно: ${freeKb} КБ)`;
@@ -1420,6 +1422,8 @@
       try {
         const saved = localStorage.getItem('esp32_hid_console_cfg');
         if (saved) Object.assign(state.settings, JSON.parse(saved));
+        const savedVersion = localStorage.getItem('esp32_hid_firmware_version');
+        if (savedVersion) document.getElementById('firmwareVersionBadge').textContent = `FW: ${savedVersion}`;
       } catch (e) {}
 
       // Tab Switching
@@ -1553,8 +1557,8 @@
           bootP: document.getElementById('chkBootProtocol').checked ? 1 : 0,
           autoRec: document.getElementById('chkAutoReconnect').checked ? 1 : 0,
           ledM: parseInt(document.getElementById('selLedMode').value, 10),
-          ledT: parseInt(document.getElementById('selLedType').value, 10),
-          ledP: parseInt(document.getElementById('inpLedPin').value || '48', 10),
+          ledT: 1,
+          ledP: 21,
           mFmt: parseInt(document.getElementById('selMouseFmt').value, 10),
           kFmt: parseInt(document.getElementById('selKbFmt').value, 10),
           gpMode: parseInt(document.getElementById('selGpMode').value, 10),
@@ -1579,8 +1583,8 @@
         document.getElementById('chkBootProtocol').checked = true;
         document.getElementById('chkAutoReconnect').checked = true;
         document.getElementById('selLedMode').value = '2';
-        document.getElementById('selLedType').value = '2';
-        document.getElementById('inpLedPin').value = '48';
+        document.getElementById('selLedType').value = '1';
+        document.getElementById('inpLedPin').value = '21';
         document.getElementById('selMouseFmt').value = '0';
         document.getElementById('selKbFmt').value = '0';
         document.getElementById('selGpMode').value = '0';
