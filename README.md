@@ -1,7 +1,23 @@
-# ESP32 S3 BLE Bridge
+<h1 align="center">ESP32 S3 BLE Bridge</h1>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/ESP32--S3-BLE%20Bridge-E7352C?style=for-the-badge&logo=espressif&logoColor=white" alt="ESP32-S3 BLE Bridge">
+  <img src="https://img.shields.io/badge/BLE%20%E2%86%92%20USB-HID-6C63FF?style=for-the-badge&logo=bluetooth&logoColor=white" alt="BLE to USB HID">
+  <img src="https://img.shields.io/badge/status-experimental-F59E0B?style=for-the-badge" alt="Experimental status">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/AI%20assisted-Gemini%20Argon-8E75FF?style=for-the-badge&logo=googlegemini&logoColor=white" alt="AI assisted with Gemini Argon">
+  <img src="https://img.shields.io/badge/AI%20assisted-ChatGPT%20Sol-10A37F?style=for-the-badge&logo=openai&logoColor=white" alt="AI assisted with ChatGPT Sol">
+</p>
+
+----
+  
+<p align="center">
 USB-адаптер на базе ESP32-S3, который подключается к BLE HID-устройствам и передаёт их ввод на компьютер как проводное USB-устройство.
-
+</p>
+  
+----
 ```text
 BLE-клавиатура / мышь / геймпад → ESP32-S3 → USB HID → компьютер
 ```
@@ -14,6 +30,7 @@ BLE-клавиатура / мышь / геймпад → ESP32-S3 → USB HID �
 
 Так появилась идея сделать собственный универсальный аналог **Logi Bolt**: небольшой адаптер, который принимает ввод от обычной BLE-клавиатуры и мыши, а для подключённого компьютера выглядит как стандартное проводное USB HID-устройство. Адаптер можно быстро переставить в нужный сервер, мини-компьютер или ноутбук без установки драйверов и дополнительного программного обеспечения.
 
+Это не официальный продукт Logitech и не реализация протокола Logi Bolt — название используется только как понятное сравнение идеи. Цель проекта — универсальный BLE → USB HID-мост для разных устройств.
 
 ## Возможности
 

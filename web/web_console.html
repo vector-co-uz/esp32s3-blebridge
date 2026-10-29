@@ -1,0 +1,1890 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ESP32-S3 BLE Bridge Console</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          },
+          colors: {
+            slate: {
+              850: '#131c2e',
+              925: '#0b1120',
+              950: '#060a13'
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background-color: #0b1120;
+      color: #e2e8f0;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.1); opacity: 0.4; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .pulse-indicator {
+      animation: pulse-ring 2s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-925 text-slate-100 selection:bg-indigo-500 selection:text-white">
+
+  <!-- Top Header Bar (inspired by finger563/esp-usb-ble-hid dongle_console.html) -->
+  <header class="sticky top-0 z-30 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">ESP32-S3 HID Dongle Console</h1>
+            <span class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">v0.7 FIXED — GPIO21 + Low Latency + MX Mini + Stadia</span>
+          </div>
+          <p class="text-xs text-slate-400">Мост BLE Клавиатура/Мышь → Проводной USB HID</p>
+        </div>
+      </div>
+
+      <!-- Connection Toolbar -->
+      <div class="flex flex-wrap items-center gap-2.5">
+        <!-- Connection Badge -->
+        <div id="connBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/90 border border-slate-700 text-xs font-medium text-slate-300">
+          <span id="connDot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+          <span id="connText">Отключен</span>
+        </div>
+
+        <!-- Demo Mode Button -->
+        <button id="btnToggleDemo" type="button" class="px-3 py-1.5 rounded-lg text-xs font-medium border border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 transition flex items-center gap-1.5" title="Симуляция работы донгла прямо в браузере">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span id="demoBtnLabel">Демо-режим</span>
+        </button>
+
+        <!-- Primary Connect USB Dongle Button -->
+        <button id="btnConnectUsb" type="button" class="px-4 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white shadow-md shadow-indigo-600/25 transition flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          <span id="connectBtnLabel">Подключить стик (USB)</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="max-w-6xl mx-auto px-4 flex items-center gap-1 overflow-x-auto border-t border-slate-800/60 pt-1">
+      <button type="button" data-tab="device" class="tab-btn px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 border-indigo-500 text-indigo-400 whitespace-nowrap flex items-center gap-2 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg>
+        Устройство и BLE
+      </button>
+      <button type="button" data-tab="settings" class="tab-btn px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 whitespace-nowrap flex items-center gap-2 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+        Настройки HID
+      </button>
+      <button type="button" data-tab="monitor" class="tab-btn px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 whitespace-nowrap flex items-center gap-2 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        Монитор ввода и Логи
+      </button>
+      <button type="button" data-tab="firmware" class="tab-btn px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 whitespace-nowrap flex items-center gap-2 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+        Система и Код прошивки (.ino)
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-5 space-y-5">
+
+    <!-- WebSerial & /dev/ttyACM0 Diagnostic Banner -->
+    <div id="webSerialWarning" class="hidden rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-xs text-rose-100 space-y-3">
+      <div class="flex items-start justify-between gap-3">
+        <div class="flex items-start gap-3">
+          <svg class="w-5 h-5 text-rose-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+          <div class="space-y-1">
+            <p id="errBannerTitle" class="font-bold text-sm text-white">Не удалось открыть порт /dev/ttyACM0</p>
+            <p id="errBannerDetail" class="mono text-[11px] text-rose-300">Причина: NetworkError (Permission denied или порт занят)</p>
+          </div>
+        </div>
+        <button id="btnCloseWarning" type="button" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px]">Скрыть</button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+        <div class="p-3 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1.5">
+          <div class="font-semibold text-amber-300">1. Нет прав на /dev/ttyACM0 (Linux)</div>
+          <p class="text-[11px] text-slate-300">В Linux браузер не может открыть порт без прав группы <code class="text-indigo-300">dialout</code> / <code class="text-indigo-300">uucp</code>. Выполните в терминале:</p>
+          <div class="flex items-center gap-1.5">
+            <code id="cmdChmod" class="flex-1 px-2 py-1 rounded bg-slate-950 mono text-[11px] text-emerald-400 select-all">sudo chmod 666 /dev/ttyACM0</code>
+            <button id="btnCopyChmod" type="button" class="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-semibold">Копировать</button>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1.5">
+          <div class="font-semibold text-amber-300">2. Порт занят Arduino IDE / ModemManager</div>
+          <p class="text-[11px] text-slate-300">Закройте <strong>Serial Monitor</strong> (или саму Arduino IDE). Проверить, кто держит порт, и освободить:</p>
+          <div class="flex items-center gap-1.5">
+            <code id="cmdFuser" class="flex-1 px-2 py-1 rounded bg-slate-950 mono text-[11px] text-emerald-400 select-all">sudo fuser -k /dev/ttyACM0</code>
+            <button id="btnCopyFuser" type="button" class="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-semibold">Копировать</button>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1.5">
+          <div class="font-semibold text-amber-300">3. Открыто внутри окна чата (iframe)</div>
+          <p class="text-[11px] text-slate-300">Окно предпросмотра изолировано песочницей. Скачайте файл и откройте его в новой вкладке Chrome/Brave:</p>
+          <button id="btnBannerDownloadHtml" type="button" class="w-full py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold">Скачать dongle_console.html</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 1: DEVICE & BLE ==================== -->
+    <section id="tab-device" class="tab-panel space-y-5">
+      <!-- No Heartbeat Warning (shown if /dev/ttyACM0 is open but ESP32-S3 doesn't send JSON status) -->
+      <div id="noHeartbeatBanner" class="hidden rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-xs text-amber-100 flex flex-wrap items-center justify-between gap-3">
+        <div class="space-y-1">
+          <div class="font-bold text-sm text-amber-300">Порт /dev/ttyACM0 открыт, но стик не присылает телеметрию!</div>
+          <p class="text-amber-100/90">Скорее всего, в плату ещё залит первый базовый скетч (без поддержки веб-консоли) или в Arduino IDE был выключен <code class="text-white">USB CDC On Boot: Enabled</code>. Перейдите во вкладку <strong>«Система и Код прошивки (.ino)»</strong>, скопируйте обновлённый код и загрузите его в ESP32-S3.</p>
+        </div>
+        <button id="btnGoToFirmwareTab" type="button" class="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shrink-0 transition">
+          Открыть код прошивки →
+        </button>
+      </div>
+      <!-- Status Overview Cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <div class="rounded-xl bg-slate-900 border border-slate-800 p-4">
+          <div class="text-xs text-slate-400 flex items-center justify-between">
+            <span>Статус USB HID</span>
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          </div>
+          <div id="statUsbState" class="mt-1.5 text-base font-bold text-white">Клава + Мышь + Геймпад</div>
+          <div class="mt-1 text-[11px] text-slate-400">TinyUSB Boot + Report</div>
+        </div>
+
+        <div class="rounded-xl bg-slate-900 border border-slate-800 p-4">
+          <div class="text-xs text-slate-400 flex items-center justify-between">
+            <span>Статус радиоканала BLE</span>
+            <span id="bleDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+          </div>
+          <div id="statBleState" class="mt-1.5 text-base font-bold text-white">Ожидание</div>
+          <div id="statBleSub" class="mt-1 text-[11px] text-slate-400">NimBLE 2.x Central</div>
+        </div>
+
+        <div class="rounded-xl bg-slate-900 border border-slate-800 p-4">
+          <div class="text-xs text-slate-400 flex items-center justify-between">
+            <span>Пакеты HID (вход → USB)</span>
+            <span class="text-[11px] mono text-indigo-400" id="statPollRate">1000 Гц</span>
+          </div>
+          <div id="statPacketCount" class="mt-1.5 text-base font-bold mono text-white">0</div>
+          <div id="statLastInput" class="mt-1 text-[11px] text-slate-400 truncate">Нет активности</div>
+        </div>
+
+        <div class="rounded-xl bg-slate-900 border border-slate-800 p-4">
+          <div class="text-xs text-slate-400 flex items-center justify-between">
+            <span>Аптайм / Память</span>
+            <span class="text-[11px] mono text-emerald-400" id="statHeap">248 КБ</span>
+          </div>
+          <div id="statUptime" class="mt-1.5 text-base font-bold mono text-white">00:00:00</div>
+          <div class="mt-1 text-[11px] text-slate-400">ESP32-S3 Mini @ 240 МГц</div>
+        </div>
+      </div>
+
+      <!-- Two-Column Layout: Paired Devices & BLE Scanner -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+        <!-- Left Column: Paired / Bonded Devices (5 cols) -->
+        <div class="lg:col-span-5 rounded-xl bg-slate-900 border border-slate-800 flex flex-col">
+          <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+            <div>
+              <h2 class="text-sm font-semibold text-white flex items-center gap-2">
+                <span>Привязанные устройства (NVS)</span>
+                <span id="pairedCountBadge" class="px-2 py-0.5 text-xs rounded-full bg-slate-800 text-slate-300 border border-slate-700">0</span>
+              </h2>
+              <p class="text-xs text-slate-400 mt-0.5">Стик автоматически подключается к ним при включении</p>
+            </div>
+            <button id="btnForgetAll" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-medium text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition">
+              Сбросить все
+            </button>
+          </div>
+
+          <div id="pairedList" class="p-4 space-y-2.5 flex-1">
+            <!-- Dynamically populated -->
+          </div>
+
+          <!-- Manual MAC Pairing Box -->
+          <div class="p-4 border-t border-slate-800 bg-slate-950/40 rounded-b-xl space-y-2.5">
+            <label for="manualMacInput" class="block text-xs font-medium text-slate-300">Привязать по MAC-адресу вручную</label>
+            <div class="flex flex-wrap sm:flex-nowrap gap-2">
+              <input id="manualMacInput" type="text" placeholder="AA:BB:CC:11:22:33" maxlength="17" class="flex-1 min-w-0 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs mono text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500" />
+              <select id="manualAddrType" aria-label="Тип адреса BLE" class="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                <option value="1">Random (1)</option>
+                <option value="0">Public (0)</option>
+              </select>
+              <button id="btnAddManualMac" type="button" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition shrink-0">
+                Подключить
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: Live BLE Air Scanner (7 cols) -->
+        <div class="lg:col-span-7 rounded-xl bg-slate-900 border border-slate-800 flex flex-col">
+          <div class="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 class="text-sm font-semibold text-white flex items-center gap-2">
+                <span>Сканер эфира Bluetooth LE</span>
+                <span id="scanSpinner" class="hidden inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                  <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
+                  Поиск...
+                </span>
+              </h2>
+              <p class="text-xs text-slate-400 mt-0.5">Для Google Stadia зажмите <span class="text-indigo-300 font-medium">Y + кнопку Stadia на 2 с</span> (замигает оранжевым) и нажмите «Сканировать»</p>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <label class="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer select-none">
+                <input id="chkFilterHidOnly" type="checkbox" class="rounded bg-slate-800 border-slate-700 text-indigo-500 focus:ring-0" />
+                <span>Только HID (0x1812)</span>
+              </label>
+              <button id="btnStartScan" type="button" class="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold shadow-sm transition flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                <span id="scanBtnText">Сканировать (10 с)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Discovered Devices Table -->
+          <div class="p-4 flex-1 overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="border-b border-slate-800 text-[11px] uppercase tracking-wider text-slate-400">
+                  <th class="pb-2.5 font-semibold">Устройство</th>
+                  <th class="pb-2.5 font-semibold">MAC / Тип</th>
+                  <th class="pb-2.5 font-semibold">Профиль</th>
+                  <th class="pb-2.5 font-semibold">Сигнал</th>
+                  <th class="pb-2.5 text-right font-semibold">Действие</th>
+                </tr>
+              </thead>
+              <tbody id="scanResultsBody" class="divide-y divide-slate-800/60 text-xs">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: HID SETTINGS ==================== -->
+    <section id="tab-settings" class="tab-panel hidden space-y-5">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+        <!-- Mouse Settings Card -->
+        <div class="rounded-xl bg-slate-900 border border-slate-800 p-5 space-y-4">
+          <div class="flex items-center gap-2.5 pb-3 border-b border-slate-800">
+            <div class="w-8 h-8 rounded-lg bg-indigo-500/15 text-indigo-400 flex items-center justify-center">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/></svg>
+            </div>
+            <div>
+              <h3 class="text-sm font-semibold text-white">Параметры мыши (USB Relative Mouse)</h3>
+              <p class="text-xs text-slate-400">Обработка координат на лету внутри ESP32-S3</p>
+            </div>
+          </div>
+
+          <!-- Mouse Packet Format Selector -->
+          <div class="space-y-1.5">
+            <label for="selMouseFmt" class="block text-xs font-medium text-indigo-300">Формат пакета BLE-мыши (оси X/Y и кнопки)</label>
+            <select id="selMouseFmt" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-indigo-500/40 text-xs text-slate-100 focus:outline-none focus:border-indigo-400">
+              <option value="0">Авто (чтение HID Report Map 0x2A4B + автоопределение)</option>
+              <option value="1">16-бит X/Y + 1 байт кнопок ([Btn, X_lo, X_hi, Y_lo, Y_hi, Wheel])</option>
+              <option value="2">16-бит X/Y + 2 байта кнопок Logitech ([BtnL, BtnH, X_lo, X_hi, Y_lo, Y_hi, Wheel])</option>
+              <option value="3">12-бит упакованные X/Y + 1 байт кнопок ([Btn, X_lo, XY_mid, Y_hi, Wheel])</option>
+              <option value="4">12-бит упакованные X/Y + 2 байта кнопок Logitech ([BtnL, BtnH, X_lo, XY_mid, Y_hi, Wheel])</option>
+              <option value="5">8-бит классический Boot ([Btn, X, Y, Wheel] — 3-4 байта)</option>
+            </select>
+            <p class="text-[11px] text-slate-400">Исправляет проблему, когда мышь двигается только влево-вправо (12/16-битные координаты)</p>
+          </div>
+
+          <!-- Sensitivity Multiplier -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <label for="rngMouseScale" class="text-slate-300 font-medium">Множитель скорости курсора (DPI Scale)</label>
+              <span id="lblMouseScale" class="mono text-indigo-400 font-semibold">1.0x</span>
+            </div>
+            <input id="rngMouseScale" type="range" min="5" max="30" step="1" value="10" class="w-full accent-indigo-500 cursor-pointer" />
+            <div class="flex justify-between text-[10px] text-slate-500">
+              <span>0.5x (Точнее)</span>
+              <span>1.0x (Оригинал)</span>
+              <span>3.0x (Быстрее)</span>
+            </div>
+          </div>
+
+          <!-- Scroll Wheel Multiplier -->
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <label for="rngScrollScale" class="text-slate-300 font-medium">Скорость колеса прокрутки</label>
+              <span id="lblScrollScale" class="mono text-indigo-400 font-semibold">1x</span>
+            </div>
+            <input id="rngScrollScale" type="range" min="1" max="5" step="1" value="1" class="w-full accent-indigo-500 cursor-pointer" />
+          </div>
+
+          <!-- Checkboxes -->
+          <div class="space-y-2.5 pt-2">
+            <label class="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/50 border border-slate-800/80 cursor-pointer">
+              <div>
+                <div class="text-xs font-medium text-slate-200">Поменять местами ЛКМ и ПКМ</div>
+                <div class="text-[11px] text-slate-400">Аппаратный режим для левшей (без настроек в ОС)</div>
+              </div>
+              <input id="chkSwapMouseBtns" type="checkbox" class="w-4 h-4 rounded accent-indigo-500" />
+            </label>
+
+            <label class="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/50 border border-slate-800/80 cursor-pointer">
+              <div>
+                <div class="text-xs font-medium text-slate-200">Инверсия колеса прокрутки (Natural Scroll)</div>
+                <div class="text-[11px] text-slate-400">Изменяет направление вертикального скролла</div>
+              </div>
+              <input id="chkInvertWheel" type="checkbox" class="w-4 h-4 rounded accent-indigo-500" />
+            </label>
+
+            <label class="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/50 border border-slate-800/80 cursor-pointer">
+              <div>
+                <div class="text-xs font-medium text-slate-200">Инверсия осей X/Y (разворот на 180°)</div>
+                <div class="text-[11px] text-slate-400">Для нестандартного расположения трекбола/мыши</div>
+              </div>
+              <input id="chkInvertXY" type="checkbox" class="w-4 h-4 rounded accent-indigo-500" />
+            </label>
+          </div>
+        </div>
+
+        <!-- Keyboard & System Settings Card -->
+        <div class="rounded-xl bg-slate-900 border border-slate-800 p-5 space-y-4">
+          <div class="flex items-center gap-2.5 pb-3 border-b border-slate-800">
+            <div class="w-8 h-8 rounded-lg bg-cyan-500/15 text-cyan-400 flex items-center justify-center">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+            </div>
+            <div>
+              <h3 class="text-sm font-semibold text-white">Параметры клавиатуры и индикации</h3>
+              <p class="text-xs text-slate-400">Настройки модификаторов, BIOS-режима и светодиода</p>
+            </div>
+          </div>
+
+          <!-- Keyboard Packet Format Selector -->
+          <div class="space-y-1.5">
+            <label for="selKbFmt" class="block text-xs font-medium text-cyan-300">Формат отчётов клавиатуры (MX Keys Mini / BLE KB)</label>
+            <select id="selKbFmt" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-cyan-500/40 text-xs text-slate-100 focus:outline-none focus:border-cyan-400">
+              <option value="0">Авто (чтение HID Report Map 0x2A4B + автокоррекция)</option>
+              <option value="1">Принудительный Boot Protocol (запись 0x00 в 0x2A4E, отчёт 0x2A22)</option>
+              <option value="2">Стандартный 8-байтный ([Mod, Reserved, K0..K5])</option>
+              <option value="3">Без пустого байта ([Mod, K0..K6] — ключи с 1-го байта)</option>
+              <option value="4">Битовая маска NKRO (Logitech BLE Bitmap → 6KRO)</option>
+            </select>
+            <p class="text-[11px] text-slate-400">Исправляет неверное определение клавиш на Logitech MX Keys Mini и других BLE-клавиатурах</p>
+          </div>
+
+          <div class="space-y-2.5">
+            <label class="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/50 border border-slate-800/80 cursor-pointer">
+              <div>
+                <div class="text-xs font-medium text-slate-200">Поменять местами Win (GUI) ↔ Alt</div>
+                <div class="text-[11px] text-slate-400">Удобно при подключении Mac-клавиатуры к Windows ПК</div>
+              </div>
+              <input id="chkSwapWinAlt" type="checkbox" class="w-4 h-4 rounded accent-indigo-500" />
+            </label>
+
+            <label class="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/50 border border-slate-800/80 cursor-pointer">
+              <div>
+                <div class="text-xs font-medium text-slate-200">Принудительный Boot Protocol (BIOS Mode)</div>
+                <div class="text-[11px] text-slate-400">Запрашивать у BLE-устройств строгий 8-байтный отчёт для BIOS/BitLocker</div>
+              </div>
+              <input id="chkBootProtocol" type="checkbox" checked class="w-4 h-4 rounded accent-indigo-500" />
+            </label>
+
+            <label class="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/50 border border-slate-800/80 cursor-pointer">
+              <div>
+                <div class="text-xs font-medium text-slate-200">Автоматическое переподключение в фоне</div>
+                <div class="text-[11px] text-slate-400">Искать привязанные устройства каждые 5 секунд при потере связи</div>
+              </div>
+              <input id="chkAutoReconnect" type="checkbox" checked class="w-4 h-4 rounded accent-indigo-500" />
+            </label>
+          </div>
+
+          <!-- LED Mode & Smart Indication -->
+          <div class="space-y-2.5 pt-2 border-t border-slate-800/80">
+            <div class="space-y-1.5">
+              <label for="selLedMode" class="block text-xs font-medium text-cyan-300">Режим светодиодной индикации ESP32-S3</label>
+              <select id="selLedMode" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-cyan-500/40 text-xs text-slate-100 focus:outline-none focus:border-cyan-400">
+                <option value="2">Полная индикация: Поиск + Ожидание + Подкл/Откл + Ввод (По умолчанию)</option>
+                <option value="1">Только статусы (Поиск / Нет девайсов / Подкл / Откл — без мигания при вводе)</option>
+                <option value="0">Полностью выключен (Скрытый режим)</option>
+              </select>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div class="space-y-1">
+                <label for="selLedType" class="block text-xs font-medium text-slate-300">Тип светодиода на плате</label>
+                <select id="selLedType" class="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                  <option value="2">Авто-Комбо (Digital + WS2812 RGB на GPIO 21)</option>
+                  <option value="0">Обычный Digital LED (HIGH/LOW)</option>
+                  <option value="1">Адресный RGB WS2812 (фиксировано GPIO 21)</option>
+                </select>
+              </div>
+              <div class="space-y-1">
+                <label for="inpLedPin" class="block text-xs font-medium text-slate-300">Пин светодиода (GPIO)</label>
+                <input id="inpLedPin" type="number" min="0" max="48" value="48" class="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs mono text-white focus:outline-none focus:border-indigo-500" />
+              </div>
+            </div>
+            <p class="text-[11px] text-slate-400">В режиме «Авто-Комбо» обычный LED работает на выбранном GPIO, а WS2812 всегда на GPIO 21. Если выбран GPIO 21, обычный digital-выход отключается во избежание конфликта.</p>
+
+            <!-- LED Blink Legend & Live Hardware Test -->
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+              <div class="flex items-center justify-between text-[11px]">
+                <span class="font-semibold text-slate-300">Схема мигания светодиода:</span>
+                <div class="flex items-center gap-1.5">
+                  <button id="btnTestLedConn" type="button" class="px-2 py-0.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-[10px] font-medium transition">Тест: Подкл</button>
+                  <button id="btnTestLedDisc" type="button" class="px-2 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-[10px] font-medium transition">Тест: Откл</button>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-400">
+                <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span><span><strong class="text-slate-200">Поиск:</strong> частое мигание (4 Гц, синий)</span></div>
+                <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400"></span><span><strong class="text-slate-200">Нет девайсов:</strong> 1 вспышка в 1.6 с (жёлтый)</span></div>
+                <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400"></span><span><strong class="text-slate-200">Подключен:</strong> 3 вспышки → горит (зелёный)</span></div>
+                <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-rose-500"></span><span><strong class="text-slate-200">Отключен:</strong> 5 быстрых вспышек (красный)</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+
+      <!-- Google Stadia & BLE Gamepad Settings Card -->
+      <div class="rounded-xl bg-slate-900 border border-emerald-500/30 p-5 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <div>
+              <h3 class="text-sm font-semibold text-white">Джойстик Google Stadia Controller и BLE-геймпады</h3>
+              <p class="text-xs text-slate-400">Поддержка нативного режима USB Gamepad и аппаратной эмуляции Клавиатура + Мышь (WASD + Курсор)</p>
+            </div>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+            Сопряжение Stadia: удерживайте Y + кнопку Stadia 2 сек
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="space-y-1.5">
+            <label for="selGpMode" class="block text-xs font-medium text-emerald-300">Режим работы джойстика по USB</label>
+            <select id="selGpMode" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-emerald-500/40 text-xs text-slate-100 focus:outline-none focus:border-emerald-400">
+              <option value="0">Нативный USB Геймпад (USBHIDGamepad — для игр и Steam)</option>
+              <option value="1">Эмуляция Клава + Мышь (Левый стик = WASD, Правый = Мышь, R2/L2 = Клики)</option>
+            </select>
+            <p class="text-[11px] text-slate-400">В режиме эмуляции стик превращает Stadia в обычную мышь и клавиатуру</p>
+          </div>
+
+          <div class="space-y-1.5">
+            <label for="selGpFmt" class="block text-xs font-medium text-slate-300">Раскодировка пакета джойстика</label>
+            <select id="selGpFmt" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+              <option value="0">Google Stadia BLE (Report 0x03, 10 байт: Hat, 15 кнопок, стики, L2/R2)</option>
+              <option value="1">Универсальный BLE Gamepad / Xbox (по дескриптору 0x2A4B)</option>
+            </select>
+            <p class="text-[11px] text-slate-400">Точная раскладка всех 15 кнопок, крестовины и аналоговых курков L2/R2 Stadia</p>
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <label for="rngGpDeadzone" class="text-slate-300 font-medium">Мёртвая зона стиков (Deadzone)</label>
+              <span id="lblGpDeadzone" class="mono text-emerald-400 font-semibold">10</span>
+            </div>
+            <input id="rngGpDeadzone" type="range" min="0" max="35" step="1" value="10" class="w-full accent-emerald-500 cursor-pointer" />
+            <div class="flex justify-between text-[10px] text-slate-500">
+              <span>0 (Без фильтра)</span>
+              <span>10 (Оптимально)</span>
+              <span>35 (Защита от дрифта)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Save / Reset Bar -->
+      <div class="rounded-xl bg-slate-900 border border-slate-800 p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="text-xs text-slate-400">
+          Настройки сохраняются в энергонезависимую память <span class="text-slate-200 font-medium">NVS Flash</span> и применяются мгновенно без перезагрузки.
+        </div>
+        <div class="flex items-center gap-2.5">
+          <button id="btnResetSettings" type="button" class="px-3.5 py-2 rounded-lg border border-slate-700 hover:bg-slate-800 text-xs font-medium text-slate-300 transition">
+            Сбросить по умолчанию
+          </button>
+          <button id="btnSaveSettings" type="button" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white shadow-md shadow-indigo-600/20 transition flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            Сохранить в память стика
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: LIVE HID MONITOR & LOGS ==================== -->
+    <section id="tab-monitor" class="tab-panel hidden space-y-5">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+        <!-- Visual HID Inspector (5 cols) -->
+        <div class="lg:col-span-5 rounded-xl bg-slate-900 border border-slate-800 p-4 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div>
+              <h3 class="text-sm font-semibold text-white">Инспектор HID-пакетов</h3>
+              <p class="text-xs text-slate-400">Живая телеметрия BLE → USB</p>
+            </div>
+            <button id="btnSimulateHidEvent" type="button" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-indigo-300 border border-slate-700 transition">
+              Тест пакета
+            </button>
+          </div>
+
+          <!-- Keyboard Visualizer -->
+          <div class="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-medium text-slate-300">Клавиатура (8-байтный Boot Report)</span>
+              <span id="hidKbRaw" class="mono text-[11px] text-indigo-400">00 00 00 00 00 00 00 00</span>
+            </div>
+            <div class="grid grid-cols-4 gap-1.5 text-center text-[11px] mono">
+              <div id="modCtrl" class="py-1 rounded bg-slate-900 border border-slate-800 text-slate-500">CTRL</div>
+              <div id="modShift" class="py-1 rounded bg-slate-900 border border-slate-800 text-slate-500">SHIFT</div>
+              <div id="modAlt" class="py-1 rounded bg-slate-900 border border-slate-800 text-slate-500">ALT</div>
+              <div id="modGui" class="py-1 rounded bg-slate-900 border border-slate-800 text-slate-500">WIN/GUI</div>
+            </div>
+            <div class="text-xs text-slate-400 flex items-center justify-between pt-1">
+              <span>Активные скан-коды:</span>
+              <span id="hidKbKeys" class="mono text-emerald-400 font-semibold">Нет нажатий</span>
+            </div>
+          </div>
+
+          <!-- Mouse Visualizer -->
+          <div class="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-medium text-slate-300">Мышь (Relative Report)</span>
+              <span id="hidMouseRaw" class="mono text-[11px] text-cyan-400">X: 0 | Y: 0 | W: 0</span>
+            </div>
+            <div class="grid grid-cols-3 gap-2 text-center text-xs mono">
+              <div id="btnMouseL" class="py-1.5 rounded bg-slate-900 border border-slate-800 text-slate-500">ЛКМ (L)</div>
+              <div id="btnMouseM" class="py-1.5 rounded bg-slate-900 border border-slate-800 text-slate-500">СКМ (M)</div>
+              <div id="btnMouseR" class="py-1.5 rounded bg-slate-900 border border-slate-800 text-slate-500">ПКМ (R)</div>
+            </div>
+          </div>
+
+          <!-- Google Stadia / Gamepad Visualizer -->
+          <div class="p-3.5 rounded-xl bg-slate-950/70 border border-emerald-500/30 space-y-2.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-medium text-emerald-300">Джойстик (Google Stadia BLE)</span>
+              <span id="hidGpRaw" class="mono text-[11px] text-emerald-400">LX:0 LY:0 | RX:0 RY:0</span>
+            </div>
+            <div class="grid grid-cols-4 gap-1.5 text-center text-[11px] mono">
+              <div id="gpBtnA" class="py-1 rounded bg-slate-900 border border-slate-800 text-slate-500">A</div>
+              <div id="gpBtnB" class="py-1 rounded bg-slate-900 border border-slate-800 text-slate-500">B</div>
+              <div id="gpBtnX" class="py-1 rounded bg-slate-900 border border-slate-800 text-slate-500">X</div>
+              <div id="gpBtnY" class="py-1 rounded bg-slate-900 border border-slate-800 text-slate-500">Y</div>
+            </div>
+            <div class="flex items-center justify-between text-[11px] text-slate-400 mono pt-0.5">
+              <span id="hidGpTriggers">L2: 0 | R2: 0 | D-Pad: Центр</span>
+              <span id="hidGpBtns" class="text-emerald-400 font-semibold">Кнопки: 0x0000</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Serial Console / JSON Protocol Log (7 cols) -->
+        <div class="lg:col-span-7 rounded-xl bg-slate-900 border border-slate-800 flex flex-col h-96">
+          <div class="p-3.5 border-b border-slate-800 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-semibold text-white">Консоль стика (WebSerial 115200)</span>
+              <span class="text-[11px] mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">JSON / Text</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="btnClearLog" type="button" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition">
+                Очистить
+              </button>
+            </div>
+          </div>
+
+          <div id="serialLogContainer" class="flex-1 p-3.5 overflow-y-auto mono text-xs space-y-1.5 bg-slate-950/80">
+            <!-- Logs appear here -->
+          </div>
+
+          <!-- Command Sender -->
+          <div class="p-3 border-t border-slate-800 flex gap-2 bg-slate-900 rounded-b-xl">
+            <input id="serialCmdInput" type="text" placeholder='Отправить команду (например: {"cmd":"status"} или {"cmd":"scan"})' class="flex-1 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs mono text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500" />
+            <button id="btnSendSerialCmd" type="button" class="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white transition">
+              Отправить
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ==================== TAB 4: SYSTEM & FIRMWARE (.INO) ==================== -->
+    <section id="tab-firmware" class="tab-panel hidden space-y-5">
+
+      <!-- USB OTA Firmware Updater Card (like finger563/esp-usb-ble-hid) -->
+      <div class="rounded-xl bg-slate-900 border border-indigo-500/40 overflow-hidden shadow-lg shadow-indigo-950/30">
+        <div class="p-4 border-b border-slate-800 bg-gradient-to-r from-indigo-500/10 to-cyan-500/10 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 flex items-center justify-center">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+              </svg>
+            </div>
+            <div>
+              <h2 class="text-sm font-bold text-white flex items-center gap-2">
+                <span>Обновление прошивки прямо из браузера (USB WebSerial OTA)</span>
+                <span id="otaPartBadge" class="px-2 py-0.5 text-[11px] mono rounded bg-slate-800 text-cyan-300 border border-slate-700">Раздел: app0 (Свободно: 1.3 МБ)</span>
+              </h2>
+              <p class="text-xs text-slate-300 mt-0.5">Загрузите скомпилированный файл <code class="text-indigo-300">.bin</code> (в Arduino IDE: <em>Скетч → Экспорт бинарного файла</em>) без использования программатора и кнопки BOOT</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button id="btnOtaRollback" type="button" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-amber-300 transition" title="Откатиться на предыдущий OTA-слот прошивки">
+              Откатить (Rollback)
+            </button>
+          </div>
+        </div>
+
+        <div class="p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
+          <!-- File Dropzone / Picker (7 cols) -->
+          <div class="lg:col-span-7 space-y-3">
+            <label for="otaFileInput" class="block cursor-pointer rounded-xl border-2 border-dashed border-slate-700 hover:border-indigo-500/70 bg-slate-950/60 p-5 text-center transition">
+              <input id="otaFileInput" type="file" accept=".bin,application/octet-stream" class="hidden" />
+              <svg class="w-8 h-8 text-indigo-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+              </svg>
+              <div id="otaFileName" class="text-xs sm:text-sm font-semibold text-white">Нажмите для выбора файла прошивки (.bin) или перетащите его сюда</div>
+              <div id="otaFileMeta" class="text-[11px] text-slate-400 mt-1 mono">Поддерживаются образы ESP32-S3 (.ino.bin) до 1.9 МБ</div>
+            </label>
+
+            <!-- Optional URL fetch for .bin -->
+            <div class="flex gap-2">
+              <input id="otaUrlInput" type="url" placeholder="Или вставьте прямую ссылку на .bin (например, с GitHub Releases)" class="flex-1 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500" />
+              <button id="btnFetchOtaUrl" type="button" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 shrink-0 transition">
+                Загрузить по URL
+              </button>
+            </div>
+          </div>
+
+          <!-- Progress & Start OTA Action (5 cols) -->
+          <div class="lg:col-span-5 rounded-xl bg-slate-950/80 border border-slate-800 p-4 space-y-3.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-medium text-slate-300">Статус загрузки OTA:</span>
+              <span id="otaStateLabel" class="mono font-semibold text-slate-400">Ожидание файла .bin</span>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="w-full h-3 rounded-full bg-slate-900 border border-slate-800 overflow-hidden">
+              <div id="otaProgressBar" class="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all duration-150" style="width: 0%"></div>
+            </div>
+
+            <div class="flex items-center justify-between text-[11px] mono text-slate-400">
+              <span id="otaBytesInfo">0 / 0 КБ</span>
+              <span id="otaPercentInfo">0%</span>
+            </div>
+
+            <div class="flex gap-2 pt-1">
+              <button id="btnStartOta" type="button" class="flex-1 py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-xs font-bold text-white shadow-md shadow-indigo-600/25 transition flex items-center justify-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                <span id="btnStartOtaText">Установить прошивку (OTA)</span>
+              </button>
+              <button id="btnDemoOtaTest" type="button" class="px-3 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-amber-300 transition" title="Проверить процесс OTA на тестовом образе">
+                Тест OTA
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hardware Control & Standalone Download Row -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="rounded-xl bg-slate-900 border border-slate-800 p-4 flex flex-col justify-between">
+          <div>
+            <h3 class="text-sm font-semibold text-white">Перезагрузка стика</h3>
+            <p class="text-xs text-slate-400 mt-1">Мягкий перезапуск контроллера ESP32-S3 с сохранением всех настроек и привязок.</p>
+          </div>
+          <button id="btnRebootStick" type="button" class="mt-4 w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition">
+            Перезагрузить ESP32-S3
+          </button>
+        </div>
+
+        <div class="rounded-xl bg-slate-900 border border-slate-800 p-4 flex flex-col justify-between">
+          <div>
+            <h3 class="text-sm font-semibold text-white">Режим прошивки (ROM Bootloader)</h3>
+            <p class="text-xs text-slate-400 mt-1">Переводит ESP32-S3 в режим загрузки без нажатия физической кнопки BOOT на корпусе.</p>
+          </div>
+          <button id="btnEnterBootloader" type="button" class="mt-4 w-full py-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-xs font-semibold text-amber-300 transition">
+            Перейти в Bootloader
+          </button>
+        </div>
+
+        <div class="rounded-xl bg-slate-900 border border-slate-800 p-4 flex flex-col justify-between">
+          <div>
+            <h3 class="text-sm font-semibold text-white">Автономная HTML-консоль</h3>
+            <p class="text-xs text-slate-400 mt-1">Сохраните эту страницу как один файл <code class="text-indigo-300">dongle_console.html</code> на рабочий стол для работы через Chrome/Edge.</p>
+          </div>
+          <button id="btnDownloadConsoleHtml" type="button" class="mt-4 w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white shadow-sm transition">
+            Скачать HTML-консоль
+          </button>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Confirmation Modal -->
+  <div id="confirmModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+    <div class="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-5 shadow-2xl space-y-4">
+      <div class="flex items-start gap-3">
+        <div class="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        </div>
+        <div>
+          <h3 id="modalTitle" class="text-sm font-bold text-white">Подтверждение</h3>
+          <p id="modalDesc" class="text-xs text-slate-300 mt-1">Вы уверены?</p>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button id="btnModalCancel" type="button" class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 transition">
+          Отмена
+        </button>
+        <button id="btnModalConfirm" type="button" class="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white transition">
+          Подтвердить
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toastBox" class="fixed bottom-4 right-4 z-50 hidden max-w-sm rounded-xl bg-slate-800 border border-slate-700 px-4 py-3 shadow-xl text-xs text-white flex items-center gap-2.5">
+    <span id="toastDot" class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
+    <span id="toastMsg">Готово</span>
+  </div>
+
+  <script>
+    // ==================== APPLICATION STATE ====================
+    const state = {
+      connectedUsb: false,
+      demoMode: false,
+      scanning: false,
+      uptime: 0,
+      freeHeap: 254120,
+      packetCount: 0,
+      lastInputDesc: 'Ожидание ввода',
+      port: null,
+      reader: null,
+      writer: null,
+      receivedHeartbeat: false,
+      heartbeatTimer: null,
+      otaBuffer: null,
+      otaFileName: '',
+      otaUploading: false,
+      otaOffset: 0,
+      otaAckResolver: null,
+      readBuffer: '',
+      pairedDevices: [
+        { mac: 'E4:5F:01:8A:2C:19', type: 1, name: 'MX Keys Mini', fmt: 8, scale: 10, connected: true },
+        { mac: 'DC:2C:26:41:09:B4', type: 1, name: 'BLE Mouse', fmt: 1, scale: 12, connected: true },
+        { mac: '74:74:46:9A:B1:08', type: 0, name: 'Stadia Controller', fmt: 10, scale: 10, connected: true }
+      ],
+      discoveredDevices: [],
+      settings: {
+        mouseScale10: 10,
+        scrollScale: 1,
+        swapMouseBtns: false,
+        invertWheel: false,
+        invertXY: false,
+        swapWinAlt: false,
+        bootProtocol: true,
+        autoReconnect: true,
+        ledMode: '2',
+        ledPin: 48
+      }
+    };
+
+    const DEMO_SCAN_POOL = [
+      { name: 'Stadia7408-c1a', mac: '74:74:46:9A:B1:08', type: 0, rssi: -42, hid: true, app: 964 },
+      { name: 'MX Keys Mini', mac: 'E4:5F:01:8A:2C:19', type: 1, rssi: -48, hid: true, app: 961 },
+      { name: 'MX Anywhere 3', mac: 'F1:82:3C:99:10:4A', type: 1, rssi: -52, hid: true, app: 962 },
+      { name: 'Logitech Pebble M350', mac: 'D9:11:04:7B:88:20', type: 1, rssi: -61, hid: true, app: 962 },
+      { name: 'Apple Smart TV BLE', mac: '54:13:79:A0:01:FF', type: 0, rssi: -79, hid: false, app: 0 }
+    ];
+
+    let demoTimer = null;
+    let scanTimeout = null;
+    let modalCallback = null;
+
+    // ==================== UI HELPERS ====================
+    function showToast(msg, type = 'ok') {
+      const box = document.getElementById('toastBox');
+      const dot = document.getElementById('toastDot');
+      const txt = document.getElementById('toastMsg');
+      txt.textContent = msg;
+      dot.className = 'w-2 h-2 rounded-full shrink-0 ' + (
+        type === 'err' ? 'bg-rose-400' : type === 'warn' ? 'bg-amber-400' : 'bg-emerald-400'
+      );
+      box.classList.remove('hidden');
+      clearTimeout(box._timer);
+      box._timer = setTimeout(() => box.classList.add('hidden'), 3200);
+    }
+
+    function openConfirmModal(title, desc, onConfirm) {
+      document.getElementById('modalTitle').textContent = title;
+      document.getElementById('modalDesc').textContent = desc;
+      modalCallback = onConfirm;
+      const modal = document.getElementById('confirmModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeConfirmModal() {
+      const modal = document.getElementById('confirmModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      modalCallback = null;
+    }
+
+    function appendLog(text, dir = 'rx') {
+      const container = document.getElementById('serialLogContainer');
+      const row = document.createElement('div');
+      const time = new Date().toLocaleTimeString('ru-RU', { hour12: false });
+      const badge = dir === 'tx'
+        ? '<span class="text-indigo-400 font-semibold">[TX →]</span>'
+        : dir === 'sys'
+        ? '<span class="text-amber-400 font-semibold">[SYS]</span>'
+        : '<span class="text-emerald-400 font-semibold">[← RX]</span>';
+      row.className = 'text-slate-300 break-all';
+      row.innerHTML = `<span class="text-slate-500">${time}</span> ${badge} <span></span>`;
+      row.lastChild.textContent = text;
+      container.appendChild(row);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function formatUptime(sec) {
+      const h = String(Math.floor(sec / 3600)).padStart(2, '0');
+      const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
+      const s = String(sec % 60).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+
+    // ==================== RENDER FUNCTIONS ====================
+    function renderTopStatus() {
+      const dot = document.getElementById('connDot');
+      const txt = document.getElementById('connText');
+      const btnConnect = document.getElementById('connectBtnLabel');
+      const btnDemo = document.getElementById('demoBtnLabel');
+      const bleDot = document.getElementById('bleDot');
+      const bleState = document.getElementById('statBleState');
+      const bleSub = document.getElementById('statBleSub');
+
+      if (state.connectedUsb) {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-indicator';
+        txt.textContent = 'Подключен по WebSerial';
+        btnConnect.textContent = 'Отключить USB';
+      } else if (state.demoMode) {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 pulse-indicator';
+        txt.textContent = 'Демо-симуляция активна';
+        btnConnect.textContent = 'Подключить стик (USB)';
+      } else {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-slate-500';
+        txt.textContent = 'Стик не подключен';
+        btnConnect.textContent = 'Подключить стик (USB)';
+      }
+
+      btnDemo.textContent = state.demoMode ? 'Выключить демо' : 'Демо-режим';
+
+      const activeConnCount = state.pairedDevices.filter(d => d.connected).length;
+      if (state.scanning) {
+        bleDot.className = 'w-2 h-2 rounded-full bg-cyan-400 animate-ping';
+        bleState.textContent = 'Поиск BLE...';
+        bleSub.textContent = 'Активное сканирование 0x1812';
+      } else if ((state.connectedUsb || state.demoMode) && activeConnCount > 0) {
+        bleDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        bleState.textContent = `Активно (${activeConnCount} устр.)`;
+        bleSub.textContent = 'Шифрование + Notify активны';
+      } else {
+        bleDot.className = 'w-2 h-2 rounded-full bg-slate-500';
+        bleState.textContent = 'Ожидание связи';
+        bleSub.textContent = 'NimBLE 2.x Central';
+      }
+
+      document.getElementById('statPacketCount').textContent = state.packetCount.toLocaleString('ru-RU');
+      document.getElementById('statLastInput').textContent = state.lastInputDesc;
+      document.getElementById('statUptime').textContent = formatUptime(state.uptime);
+      document.getElementById('statHeap').textContent = `${Math.round(state.freeHeap / 1024)} КБ`;
+    }
+
+    function renderPairedDevices() {
+      const list = document.getElementById('pairedList');
+      document.getElementById('pairedCountBadge').textContent = String(state.pairedDevices.length);
+      list.innerHTML = '';
+
+      if (state.pairedDevices.length === 0) {
+        list.innerHTML = `
+          <div class="rounded-xl border border-dashed border-slate-800 p-6 text-center text-xs text-slate-400">
+            Нет сохранённых привязок в памяти NVS.<br/>Найдите мышь или клавиатуру в сканере справа и нажмите «Подключить».
+          </div>`;
+        return;
+      }
+
+      const fmtOptions = [
+        { v: 0, label: '0: Авто (HID Report Map 0x2A4B)' },
+        { v: 1, label: '1: Мышь 16-бит X/Y + 1B кнопок' },
+        { v: 2, label: '2: Мышь 16-бит X/Y + 2B кнопок (Logitech)' },
+        { v: 3, label: '3: Мышь 12-бит упакованные X/Y + 1B' },
+        { v: 4, label: '4: Мышь 12-бит упакованные X/Y + 2B' },
+        { v: 5, label: '5: Мышь 8-бит классическая (Boot)' },
+        { v: 6, label: '6: Клавиатура Boot Protocol (0x2A22)' },
+        { v: 7, label: '7: Клавиатура Стандарт 8 байт' },
+        { v: 8, label: '8: Клавиатура MX Keys Mini (Без пустого байта)' },
+        { v: 9, label: '9: Клавиатура NKRO Битовая маска' },
+        { v: 10, label: '10: Джойстик Google Stadia BLE (10 байт)' },
+        { v: 11, label: '11: Джойстик Универсальный BLE Gamepad' }
+      ];
+
+      const scaleOptions = [
+        { v: 6, label: '0.6x' },
+        { v: 8, label: '0.8x' },
+        { v: 10, label: '1.0x' },
+        { v: 12, label: '1.2x' },
+        { v: 15, label: '1.5x' },
+        { v: 20, label: '2.0x' }
+      ];
+
+      state.pairedDevices.forEach((dev) => {
+        const card = document.createElement('div');
+        card.className = 'p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2.5';
+        const statusBadge = dev.connected
+          ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">На связи</span>'
+          : '<span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700">В ожидании</span>';
+
+        const curFmt = dev.fmt ?? 0;
+        const curScale = dev.scale ?? 10;
+
+        const fmtOptsHtml = fmtOptions.map(o => `<option value="${o.v}" ${o.v === curFmt ? 'selected' : ''}>${o.label}</option>`).join('');
+        const scaleOptsHtml = scaleOptions.map(o => `<option value="${o.v}" ${o.v === curScale ? 'selected' : ''}>Скорость: ${o.label}</option>`).join('');
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold text-white truncate">${dev.name}</span>
+                ${statusBadge}
+              </div>
+              <div class="mt-0.5 flex items-center gap-2 text-[11px] text-slate-400 mono">
+                <span>${dev.mac}</span>
+                <span>•</span>
+                <span>Тип: ${dev.type === 1 ? 'Random' : 'Public'}</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button type="button" data-action="reconnect" data-mac="${dev.mac}" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-200 transition">
+                Связь
+              </button>
+              <button type="button" data-action="forget" data-mac="${dev.mac}" class="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-[11px] text-rose-300 border border-rose-500/20 transition">
+                Забыть
+              </button>
+            </div>
+          </div>
+          <div class="pt-2 border-t border-slate-800/80 flex flex-wrap sm:flex-nowrap items-center gap-2">
+            <select aria-label="Индивидуальная раскодировка" data-action="set-bond-fmt" data-mac="${dev.mac}" class="flex-1 min-w-0 px-2.5 py-1 rounded-lg bg-slate-900 border border-indigo-500/30 text-[11px] text-slate-200 focus:outline-none focus:border-indigo-400">
+              ${fmtOptsHtml}
+            </select>
+            <select aria-label="Индивидуальная скорость" data-action="set-bond-scale" data-mac="${dev.mac}" class="w-28 px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-[11px] mono text-indigo-300 focus:outline-none focus:border-indigo-400">
+              ${scaleOptsHtml}
+            </select>
+          </div>
+        `;
+        list.appendChild(card);
+      });
+    }
+
+    function renderScanResults() {
+      const tbody = document.getElementById('scanResultsBody');
+      const hidOnly = document.getElementById('chkFilterHidOnly').checked;
+      tbody.innerHTML = '';
+
+      const filtered = state.discoveredDevices.filter(d => !hidOnly || d.hid);
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" class="py-8 text-center text-slate-400">
+              ${state.scanning ? 'Идёт сканирование радиоэфира 2.4 ГГц...' : 'Нажмите «Сканировать (10 с)», чтобы найти клавиатуры и мыши поблизости'}
+            </td>
+          </tr>`;
+        return;
+      }
+
+      filtered.forEach(dev => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-800/40 transition';
+        const roleLabel = dev.app === 961 ? 'Клавиатура' : dev.app === 962 ? 'Мышь' : (dev.app === 963 || dev.app === 964) ? 'Геймпад (Stadia)' : dev.hid ? 'HID 0x1812' : 'Прочее BLE';
+        const rssiColor = dev.rssi > -55 ? 'text-emerald-400' : dev.rssi > -70 ? 'text-amber-400' : 'text-rose-400';
+
+        tr.innerHTML = `
+          <td class="py-2.5 pr-2 font-medium text-white">${dev.name}</td>
+          <td class="py-2.5 pr-2 mono text-[11px] text-slate-300">${dev.mac} <span class="text-slate-500">(${dev.type})</span></td>
+          <td class="py-2.5 pr-2">
+            <span class="px-2 py-0.5 rounded text-[10px] font-medium ${dev.hid ? 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30' : 'bg-slate-800 text-slate-400'}">${roleLabel}</span>
+          </td>
+          <td class="py-2.5 pr-2 mono ${rssiColor}">${dev.rssi} дБм</td>
+          <td class="py-2.5 text-right">
+            <button type="button" data-action="pair-scanned" data-mac="${dev.mac}" data-type="${dev.type}" data-name="${dev.name}" class="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-[11px] transition">
+              Подключить
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function updateHidInspectorKb(mod, k0, k1) {
+      const hex = [mod, 0, k0, k1, 0, 0, 0, 0].map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+      document.getElementById('hidKbRaw').textContent = hex;
+
+      const setMod = (id, active) => {
+        const el = document.getElementById(id);
+        el.className = active
+          ? 'py-1 rounded bg-indigo-600 text-white font-bold border border-indigo-400'
+          : 'py-1 rounded bg-slate-900 border border-slate-800 text-slate-500';
+      };
+      setMod('modCtrl', (mod & 0x11) !== 0);
+      setMod('modShift', (mod & 0x22) !== 0);
+      setMod('modAlt', (mod & 0x44) !== 0);
+      setMod('modGui', (mod & 0x88) !== 0);
+
+      document.getElementById('hidKbKeys').textContent = (k0 || k1)
+        ? `0x${k0.toString(16).toUpperCase()}${k1 ? ', 0x' + k1.toString(16).toUpperCase() : ''}`
+        : 'Отпущено (0x00)';
+    }
+
+    function updateHidInspectorMouse(btn, x, y, w) {
+      document.getElementById('hidMouseRaw').textContent = `X: ${x} | Y: ${y} | W: ${w}`;
+      const setBtn = (id, active) => {
+        const el = document.getElementById(id);
+        el.className = active
+          ? 'py-1.5 rounded bg-cyan-600 text-white font-bold border border-cyan-400'
+          : 'py-1.5 rounded bg-slate-900 border border-slate-800 text-slate-500';
+      };
+      setBtn('btnMouseL', (btn & 0x01) !== 0);
+      setBtn('btnMouseR', (btn & 0x02) !== 0);
+      setBtn('btnMouseM', (btn & 0x04) !== 0);
+    }
+
+    function updateHidInspectorGamepad(msg) {
+      const lx = msg.lx || 0, ly = msg.ly || 0, rx = msg.rx || 0, ry = msg.ry || 0;
+      const l2 = msg.l2 || 0, r2 = msg.r2 || 0, btn = msg.btn || 0;
+      const hatNames = ['Вверх', 'Вверх-Пр', 'Вправо', 'Вниз-Пр', 'Вниз', 'Вниз-Лев', 'Влево', 'Вверх-Лев'];
+      const hatStr = (msg.hat !== undefined && msg.hat <= 7) ? hatNames[msg.hat] : 'Центр';
+
+      document.getElementById('hidGpRaw').textContent = `LX:${lx} LY:${ly} | RX:${rx} RY:${ry}`;
+      document.getElementById('hidGpTriggers').textContent = `L2: ${l2} | R2: ${r2} | D-Pad: ${hatStr}`;
+      document.getElementById('hidGpBtns').textContent = `Кнопки: 0x${btn.toString(16).toUpperCase().padStart(4, '0')}`;
+
+      const setGpBtn = (id, active) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.className = active
+          ? 'py-1 rounded bg-emerald-600 text-white font-bold border border-emerald-400'
+          : 'py-1 rounded bg-slate-900 border border-slate-800 text-slate-500';
+      };
+      setGpBtn('gpBtnA', (btn & (1 << 0)) !== 0);
+      setGpBtn('gpBtnB', (btn & (1 << 1)) !== 0);
+      setGpBtn('gpBtnX', (btn & (1 << 2)) !== 0);
+      setGpBtn('gpBtnY', (btn & (1 << 3)) !== 0);
+    }
+
+    // ==================== WEBSERIAL COMMUNICATION ====================
+    async function sendJsonCommand(obj) {
+      const raw = JSON.stringify(obj);
+      appendLog(raw, 'tx');
+
+      if (state.connectedUsb && state.writer) {
+        try {
+          const data = new TextEncoder().encode(raw + '\n');
+          await state.writer.write(data);
+        } catch (err) {
+          showToast('Ошибка отправки в USB порт', 'err');
+        }
+        return;
+      }
+
+      // Demo simulation handler
+      if (!state.demoMode) {
+        enableDemoMode(false);
+      }
+      handleDemoCommand(obj);
+    }
+
+    function handleIncomingSerialLine(line) {
+      appendLog(line, 'rx');
+      try {
+        const msg = JSON.parse(line);
+        if (msg.ev === 'status' || msg.ev === 'scan') {
+          state.receivedHeartbeat = true;
+          document.getElementById('noHeartbeatBanner').classList.add('hidden');
+        }
+        if (msg.ev === 'status') {
+          if (msg.part) {
+            const freeKb = msg.otaFree ? Math.round(msg.otaFree / 1024) : 1340;
+            document.getElementById('otaPartBadge').textContent = `Раздел: ${msg.part} (Свободно: ${freeKb} КБ)`;
+          }
+          state.uptime = msg.uptime || state.uptime;
+          state.freeHeap = msg.heap || state.freeHeap;
+          state.packetCount = msg.pkts || state.packetCount;
+          state.scanning = !!msg.scanning;
+          if (Array.isArray(msg.bonds)) {
+            state.pairedDevices = msg.bonds;
+            renderPairedDevices();
+          }
+          renderTopStatus();
+        } else if (msg.ev === 'scan') {
+          const exists = state.discoveredDevices.find(d => d.mac === msg.mac);
+          if (!exists) {
+            state.discoveredDevices.push(msg);
+          } else {
+            exists.rssi = msg.rssi;
+          }
+          renderScanResults();
+        } else if (msg.ev === 'scan_end') {
+          state.scanning = false;
+          document.getElementById('scanSpinner').classList.add('hidden');
+          document.getElementById('scanBtnText').textContent = 'Сканировать (10 с)';
+          renderTopStatus();
+          renderScanResults();
+        } else if (msg.ev === 'connected') {
+          showToast(`Устройство ${msg.mac} подключено (LED: 3 зелёные вспышки)`, 'ok');
+        } else if (msg.ev === 'disconnected') {
+          showToast(`Устройство ${msg.name || msg.mac} отключилось (LED: 5 красных вспышек)`, 'warn');
+        } else if (msg.ev === 'hid_kb') {
+          state.packetCount++;
+          state.lastInputDesc = `Клавиша 0x${(msg.k0 || 0).toString(16).toUpperCase()}`;
+          updateHidInspectorKb(msg.mod || 0, msg.k0 || 0, msg.k1 || 0);
+          renderTopStatus();
+        } else if (msg.ev === 'hid_ms') {
+          state.packetCount++;
+          state.lastInputDesc = `Мышь ΔX:${msg.x} ΔY:${msg.y}`;
+          updateHidInspectorMouse(msg.btn || 0, msg.x || 0, msg.y || 0, msg.w || 0);
+          renderTopStatus();
+        } else if (msg.ev === 'hid_gp') {
+          state.packetCount++;
+          state.lastInputDesc = `Stadia LX:${msg.lx} LY:${msg.ly} R2:${msg.r2}`;
+          updateHidInspectorGamepad(msg);
+          renderTopStatus();
+        } else if (msg.ev === 'cfg_saved') {
+          showToast('Настройки сохранены в NVS память стика!', 'ok');
+        } else if (msg.ev === 'ota_ready') {
+          if (state.otaAckResolver) state.otaAckResolver({ ok: true, ready: true });
+        } else if (msg.ev === 'ota_ack') {
+          if (state.otaAckResolver) state.otaAckResolver({ ok: true, written: msg.w });
+        } else if (msg.ev === 'ota_done') {
+          if (state.otaAckResolver) state.otaAckResolver({ ok: true, done: true });
+          showToast('Прошивка успешно установлена! Перезагрузка ESP32-S3...', 'ok');
+        } else if (msg.ev === 'ota_err') {
+          if (state.otaAckResolver) state.otaAckResolver({ ok: false, msg: msg.msg });
+          showToast('Ошибка OTA: ' + (msg.msg || 'сбой записи'), 'err');
+        } else if (msg.ev === 'err') {
+          showToast(msg.msg || 'Ошибка BLE операции', 'err');
+        }
+      } catch (e) {
+        // Non-JSON log output
+      }
+    }
+
+    async function toggleUsbConnection() {
+      if (state.connectedUsb) {
+        try {
+          if (state.reader) await state.reader.cancel();
+          if (state.writer) state.writer.releaseLock();
+          if (state.port) await state.port.close();
+        } catch (e) {}
+        state.connectedUsb = false;
+        state.port = null;
+        state.reader = null;
+        state.writer = null;
+        renderTopStatus();
+        showToast('USB-стик отключен', 'warn');
+        return;
+      }
+
+      if (!('serial' in navigator)) {
+        document.getElementById('webSerialWarning').classList.remove('hidden');
+        enableDemoMode(true);
+        showToast('WebSerial недоступен в этом окне — включен Демо-режим', 'warn');
+        return;
+      }
+
+      try {
+        const port = await navigator.serial.requestPort();
+        if (!port.readable) {
+          await port.open({ baudRate: 115200, bufferSize: 4096, flowControl: 'none' });
+        }
+        // На ESP32-S3 Native USB (TinyUSB CDC) важно выставить DTR=true, RTS=false, чтобы Serial начал передачу
+        try {
+          await port.setSignals({ dataTerminalReady: true, requestToSend: false });
+        } catch (sigErr) {}
+
+        state.port = port;
+        state.writer = port.writable.getWriter();
+        state.connectedUsb = true;
+        state.demoMode = false;
+        if (demoTimer) clearInterval(demoTimer);
+        document.getElementById('webSerialWarning').classList.add('hidden');
+
+        state.receivedHeartbeat = false;
+        state.pairedDevices = [];
+        state.discoveredDevices = [];
+        renderPairedDevices();
+        renderScanResults();
+        clearTimeout(state.heartbeatTimer);
+        state.heartbeatTimer = setTimeout(() => {
+          if (state.connectedUsb && !state.receivedHeartbeat) {
+            document.getElementById('noHeartbeatBanner').classList.remove('hidden');
+            appendLog('Предупреждение: от стика нет JSON-ответа. Проверьте, загружен ли скетч из вкладки 4.', 'sys');
+          }
+        }, 3500);
+
+        appendLog('Порт /dev/ttyACM0 (USB CDC) открыт на 115200 бод, DTR=1', 'sys');
+        showToast('Порт открыт! Запрос статуса ESP32-S3...', 'ok');
+        renderTopStatus();
+        sendJsonCommand({ cmd: 'status' });
+        setTimeout(() => { if (state.connectedUsb) sendJsonCommand({ cmd: 'scan' }); }, 400);
+
+        const decoder = new TextDecoder();
+        state.reader = port.readable.getReader();
+        while (state.connectedUsb) {
+          const { value, done } = await state.reader.read();
+          if (done) break;
+          state.readBuffer += decoder.decode(value, { stream: true });
+          let lines = state.readBuffer.split('\n');
+          state.readBuffer = lines.pop();
+          for (const line of lines) {
+            const clean = line.trim();
+            if (clean) handleIncomingSerialLine(clean);
+          }
+        }
+      } catch (err) {
+        const errName = err && err.name ? err.name : 'Error';
+        const errMsg = err && err.message ? err.message : String(err);
+        appendLog(`Ошибка открытия порта [${errName}]: ${errMsg}`, 'sys');
+
+        if (errName === 'NotFoundError') {
+          showToast('Выбор порта отменён пользователем', 'warn');
+          return;
+        }
+
+        document.getElementById('errBannerTitle').textContent = `Ошибка доступа к /dev/ttyACM0 (${errName})`;
+        document.getElementById('errBannerDetail').textContent = `Детали браузера: ${errMsg}. Проверьте права доступа или закройте Serial Monitor в Arduino IDE.`;
+        document.getElementById('webSerialWarning').classList.remove('hidden');
+        enableDemoMode(false);
+        showToast(`Порт заблокирован (${errName}): см. инструкцию сверху`, 'err');
+      }
+    }
+
+    // ==================== DEMO MODE ENGINE ====================
+    function enableDemoMode(notify = true) {
+      state.demoMode = true;
+      if (demoTimer) clearInterval(demoTimer);
+      demoTimer = setInterval(() => {
+        state.uptime++;
+        renderTopStatus();
+      }, 1000);
+      renderTopStatus();
+      renderPairedDevices();
+      renderScanResults();
+      if (notify) showToast('Демо-режим активирован', 'ok');
+    }
+
+    function handleDemoCommand(obj) {
+      if (obj.cmd === 'scan') {
+        state.scanning = true;
+        state.discoveredDevices = [];
+        document.getElementById('scanSpinner').classList.remove('hidden');
+        document.getElementById('scanBtnText').textContent = 'Идёт поиск...';
+        renderTopStatus();
+        renderScanResults();
+
+        DEMO_SCAN_POOL.forEach((item, idx) => {
+          setTimeout(() => {
+            if (!state.scanning) return;
+            handleIncomingSerialLine(JSON.stringify({ ev: 'scan', ...item }));
+          }, (idx + 1) * 650);
+        });
+
+        clearTimeout(scanTimeout);
+        scanTimeout = setTimeout(() => {
+          handleIncomingSerialLine(JSON.stringify({ ev: 'scan_end' }));
+        }, 4200);
+      } else if (obj.cmd === 'connect') {
+        state.scanning = false;
+        document.getElementById('scanSpinner').classList.add('hidden');
+        document.getElementById('scanBtnText').textContent = 'Сканировать (10 с)';
+        const existing = state.pairedDevices.find(d => d.mac.toLowerCase() === obj.mac.toLowerCase());
+        if (existing) {
+          existing.connected = true;
+        } else {
+          state.pairedDevices.push({
+            mac: obj.mac.toUpperCase(),
+            type: obj.type ?? 1,
+            name: obj.name || 'BLE HID Device',
+            connected: true
+          });
+        }
+        renderPairedDevices();
+        renderTopStatus();
+        handleIncomingSerialLine(JSON.stringify({ ev: 'connected', mac: obj.mac, subs: 3 }));
+      } else if (obj.cmd === 'forget_all') {
+        state.pairedDevices = [];
+        renderPairedDevices();
+        renderTopStatus();
+        showToast('Все сохранённые привязки удалены из NVS', 'warn');
+      } else if (obj.cmd === 'set_bond_cfg') {
+        const dev = state.pairedDevices.find(d => d.mac.toLowerCase() === (obj.mac || '').toLowerCase());
+        if (dev) {
+          dev.fmt = obj.fmt ?? dev.fmt;
+          dev.scale = obj.scale ?? dev.scale;
+        }
+        renderPairedDevices();
+        showToast(`Профиль раскодировки для ${obj.mac} сохранён в NVS`, 'ok');
+      } else if (obj.cmd === 'set_config') {
+        handleIncomingSerialLine(JSON.stringify({ ev: 'cfg_saved' }));
+      } else if (obj.cmd === 'reboot') {
+        state.uptime = 0;
+        showToast('ESP32-S3 перезагружен', 'ok');
+        renderTopStatus();
+      } else if (obj.cmd === 'bootloader') {
+        showToast('ESP32-S3 переведён в ROM Bootloader (готов к прошивке)', 'warn');
+      }
+    }
+
+    // ==================== INITIALIZATION & EVENT LISTENERS ====================
+    window.addEventListener('DOMContentLoaded', () => {
+      // Load saved settings from localStorage safely
+      try {
+        const saved = localStorage.getItem('esp32_hid_console_cfg');
+        if (saved) Object.assign(state.settings, JSON.parse(saved));
+      } catch (e) {}
+
+      // Tab Switching
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const target = btn.getAttribute('data-tab');
+          document.querySelectorAll('.tab-btn').forEach(b => {
+            const active = b.getAttribute('data-tab') === target;
+            b.className = active
+              ? 'tab-btn px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 border-indigo-500 text-indigo-400 whitespace-nowrap flex items-center gap-2 transition'
+              : 'tab-btn px-4 py-2.5 text-xs sm:text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 whitespace-nowrap flex items-center gap-2 transition';
+          });
+          document.querySelectorAll('.tab-panel').forEach(panel => {
+            panel.classList.toggle('hidden', panel.id !== `tab-${target}`);
+          });
+        });
+      });
+
+      // Connect USB & Demo buttons
+      document.getElementById('btnConnectUsb').addEventListener('click', toggleUsbConnection);
+      document.getElementById('btnToggleDemo').addEventListener('click', () => {
+        if (state.demoMode) {
+          state.demoMode = false;
+          if (demoTimer) clearInterval(demoTimer);
+          renderTopStatus();
+          showToast('Демо-режим выключен', 'warn');
+        } else {
+          enableDemoMode(true);
+        }
+      });
+
+      // Start BLE Scan
+      document.getElementById('btnStartScan').addEventListener('click', () => {
+        sendJsonCommand({ cmd: 'scan' });
+      });
+
+      document.getElementById('chkFilterHidOnly').addEventListener('change', renderScanResults);
+
+      // Delegate Paired List buttons & per-device decoding selects
+      document.getElementById('pairedList').addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-action]');
+        if (!btn) return;
+        const action = btn.getAttribute('data-action');
+        const mac = btn.getAttribute('data-mac');
+        if (action === 'forget') {
+          state.pairedDevices = state.pairedDevices.filter(d => d.mac !== mac);
+          renderPairedDevices();
+          renderTopStatus();
+          sendJsonCommand({ cmd: 'forget', mac });
+          showToast(`Устройство ${mac} удалено`, 'warn');
+        } else if (action === 'reconnect') {
+          const dev = state.pairedDevices.find(d => d.mac === mac);
+          sendJsonCommand({ cmd: 'connect', mac, type: dev ? dev.type : 1, name: dev ? dev.name : 'BLE HID' });
+        }
+      });
+
+      document.getElementById('pairedList').addEventListener('change', (e) => {
+        const sel = e.target.closest('select[data-action]');
+        if (!sel) return;
+        const mac = sel.getAttribute('data-mac');
+        const dev = state.pairedDevices.find(d => d.mac === mac);
+        if (!dev) return;
+        if (sel.getAttribute('data-action') === 'set-bond-fmt') {
+          dev.fmt = parseInt(sel.value, 10);
+        } else if (sel.getAttribute('data-action') === 'set-bond-scale') {
+          dev.scale = parseInt(sel.value, 10);
+        }
+        sendJsonCommand({ cmd: 'set_bond_cfg', mac: dev.mac, fmt: dev.fmt ?? 0, scale: dev.scale ?? 10 });
+      });
+
+      // Delegate Scan Results Connect button
+      document.getElementById('scanResultsBody').addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-action="pair-scanned"]');
+        if (!btn) return;
+        const mac = btn.getAttribute('data-mac');
+        const type = parseInt(btn.getAttribute('data-type') || '1', 10);
+        const name = btn.getAttribute('data-name') || 'BLE HID';
+        sendJsonCommand({ cmd: 'connect', mac, type, name });
+      });
+
+      // Manual MAC Connect
+      document.getElementById('btnAddManualMac').addEventListener('click', () => {
+        const macInput = document.getElementById('manualMacInput');
+        const mac = macInput.value.trim().toUpperCase();
+        const type = parseInt(document.getElementById('manualAddrType').value, 10);
+        if (!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(mac)) {
+          showToast('Введите корректный MAC в формате AA:BB:CC:11:22:33', 'err');
+          return;
+        }
+        sendJsonCommand({ cmd: 'connect', mac, type, name: 'Manual BLE HID' });
+        macInput.value = '';
+      });
+
+      // Forget All Bonds
+      document.getElementById('btnForgetAll').addEventListener('click', () => {
+        openConfirmModal(
+          'Очистить все сохранённые устройства?',
+          'Все привязанные Bluetooth-мыши и клавиатуры будут удалены из NVS-памяти ESP32-S3.',
+          () => sendJsonCommand({ cmd: 'forget_all' })
+        );
+      });
+
+      // Settings Sliders & Save
+      const rngMouse = document.getElementById('rngMouseScale');
+      const lblMouse = document.getElementById('lblMouseScale');
+      rngMouse.addEventListener('input', () => {
+        lblMouse.textContent = (parseInt(rngMouse.value, 10) / 10).toFixed(1) + 'x';
+      });
+
+      const rngScroll = document.getElementById('rngScrollScale');
+      const lblScroll = document.getElementById('lblScrollScale');
+      rngScroll.addEventListener('input', () => {
+        lblScroll.textContent = rngScroll.value + 'x';
+      });
+
+      const rngGpDz = document.getElementById('rngGpDeadzone');
+      const lblGpDz = document.getElementById('lblGpDeadzone');
+      rngGpDz.addEventListener('input', () => {
+        lblGpDz.textContent = rngGpDz.value;
+      });
+
+      document.getElementById('btnSaveSettings').addEventListener('click', () => {
+        const payload = {
+          cmd: 'set_config',
+          mScale: parseInt(rngMouse.value, 10),
+          sScale: parseInt(rngScroll.value, 10),
+          swapBtn: document.getElementById('chkSwapMouseBtns').checked ? 1 : 0,
+          invWhl: document.getElementById('chkInvertWheel').checked ? 1 : 0,
+          invXY: document.getElementById('chkInvertXY').checked ? 1 : 0,
+          swapWA: document.getElementById('chkSwapWinAlt').checked ? 1 : 0,
+          bootP: document.getElementById('chkBootProtocol').checked ? 1 : 0,
+          autoRec: document.getElementById('chkAutoReconnect').checked ? 1 : 0,
+          ledM: parseInt(document.getElementById('selLedMode').value, 10),
+          ledT: parseInt(document.getElementById('selLedType').value, 10),
+          ledP: parseInt(document.getElementById('inpLedPin').value || '48', 10),
+          mFmt: parseInt(document.getElementById('selMouseFmt').value, 10),
+          kFmt: parseInt(document.getElementById('selKbFmt').value, 10),
+          gpMode: parseInt(document.getElementById('selGpMode').value, 10),
+          gpFmt: parseInt(document.getElementById('selGpFmt').value, 10),
+          gpDz: parseInt(document.getElementById('rngGpDeadzone').value, 10)
+        };
+        try {
+          localStorage.setItem('esp32_hid_console_cfg', JSON.stringify(payload));
+        } catch (e) {}
+        sendJsonCommand(payload);
+      });
+
+      document.getElementById('btnResetSettings').addEventListener('click', () => {
+        rngMouse.value = '10';
+        lblMouse.textContent = '1.0x';
+        rngScroll.value = '1';
+        lblScroll.textContent = '1x';
+        document.getElementById('chkSwapMouseBtns').checked = false;
+        document.getElementById('chkInvertWheel').checked = false;
+        document.getElementById('chkInvertXY').checked = false;
+        document.getElementById('chkSwapWinAlt').checked = false;
+        document.getElementById('chkBootProtocol').checked = true;
+        document.getElementById('chkAutoReconnect').checked = true;
+        document.getElementById('selLedMode').value = '2';
+        document.getElementById('selLedType').value = '2';
+        document.getElementById('inpLedPin').value = '48';
+        document.getElementById('selMouseFmt').value = '0';
+        document.getElementById('selKbFmt').value = '0';
+        document.getElementById('selGpMode').value = '0';
+        document.getElementById('selGpFmt').value = '0';
+        document.getElementById('rngGpDeadzone').value = '10';
+        document.getElementById('lblGpDeadzone').textContent = '10';
+        showToast('Настройки сброшены к значениям по умолчанию', 'ok');
+      });
+
+      // LED Hardware Test Buttons
+      document.getElementById('btnTestLedConn').addEventListener('click', () => {
+        sendJsonCommand({ cmd: 'led_test', ev: 1 });
+        showToast('Тест LED: 3 вспышки подключения (Зелёный)', 'ok');
+      });
+      document.getElementById('btnTestLedDisc').addEventListener('click', () => {
+        sendJsonCommand({ cmd: 'led_test', ev: 2 });
+        showToast('Тест LED: 5 вспышек отключения (Красный)', 'warn');
+      });
+
+      // HID Monitor Simulator & Serial Commands
+      document.getElementById('btnSimulateHidEvent').addEventListener('click', () => {
+        const sampleKeys = [0x04, 0x07, 0x16, 0x1A, 0x28];
+        const k = sampleKeys[Math.floor(Math.random() * sampleKeys.length)];
+        handleIncomingSerialLine(JSON.stringify({ ev: 'hid_kb', mod: 0x02, k0: k, k1: 0 }));
+        setTimeout(() => {
+          const dx = Math.floor(Math.random() * 24) - 12;
+          const dy = Math.floor(Math.random() * 24) - 12;
+          handleIncomingSerialLine(JSON.stringify({ ev: 'hid_ms', btn: 1, x: dx, y: dy, w: 1 }));
+        }, 200);
+        setTimeout(() => {
+          handleIncomingSerialLine(JSON.stringify({ ev: 'hid_gp', hat: 0, btn: 5, lx: -45, ly: -80, rx: 35, ry: -15, l2: 0, r2: 240 }));
+        }, 400);
+      });
+
+      document.getElementById('btnClearLog').addEventListener('click', () => {
+        document.getElementById('serialLogContainer').innerHTML = '';
+      });
+
+      const sendCustomCmd = () => {
+        const inp = document.getElementById('serialCmdInput');
+        const val = inp.value.trim();
+        if (!val) return;
+        try {
+          const parsed = JSON.parse(val);
+          sendJsonCommand(parsed);
+        } catch (e) {
+          sendJsonCommand({ cmd: val.toLowerCase() });
+        }
+        inp.value = '';
+      };
+
+      document.getElementById('btnSendSerialCmd').addEventListener('click', sendCustomCmd);
+      document.getElementById('serialCmdInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') sendCustomCmd();
+      });
+
+      // System & Firmware Actions
+      document.getElementById('btnRebootStick').addEventListener('click', () => {
+        openConfirmModal(
+          'Перезагрузить ESP32-S3?',
+          'Стик выполнит программный сброс и заново переподключится к вашим устройствам.',
+          () => sendJsonCommand({ cmd: 'reboot' })
+        );
+      });
+
+      document.getElementById('btnEnterBootloader').addEventListener('click', () => {
+        openConfirmModal(
+          'Перевести в режим прошивки (ROM Bootloader)?',
+          'Стик перезагрузится в режим загрузки прошивки через регистр RTC_CNTL_FORCE_DOWNLOAD_BOOT без нажатия кнопки BOOT.',
+          () => sendJsonCommand({ cmd: 'bootloader' })
+        );
+      });
+
+      function fallbackCopy(text) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+          showToast('Код прошивки скопирован в буфер обмена!', 'ok');
+        } catch (err) {
+          showToast('Выделите код вручную и нажмите Ctrl+C', 'warn');
+        }
+        document.body.removeChild(ta);
+      }
+
+      // Download Standalone HTML Console
+      document.getElementById('btnDownloadConsoleHtml').addEventListener('click', () => {
+        const htmlSource = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+        const blob = new Blob([htmlSource], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'dongle_console.html';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Файл dongle_console.html сохранён', 'ok');
+      });
+
+      document.getElementById('btnGoToFirmwareTab').addEventListener('click', () => {
+        const fwBtn = document.querySelector('button[data-tab="firmware"]');
+        if (fwBtn) fwBtn.click();
+      });
+
+      // Diagnostic banner buttons
+      document.getElementById('btnCloseWarning').addEventListener('click', () => {
+        document.getElementById('webSerialWarning').classList.add('hidden');
+      });
+      document.getElementById('btnCopyChmod').addEventListener('click', () => {
+        fallbackCopy('sudo chmod 666 /dev/ttyACM0');
+        showToast('Команда chmod скопирована!', 'ok');
+      });
+      document.getElementById('btnCopyFuser').addEventListener('click', () => {
+        fallbackCopy('sudo fuser -k /dev/ttyACM0');
+        showToast('Команда fuser скопирована!', 'ok');
+      });
+      document.getElementById('btnBannerDownloadHtml').addEventListener('click', () => {
+        document.getElementById('btnDownloadConsoleHtml').click();
+      });
+
+      // ==================== USB OTA ENGINE (BROWSER -> ESP32-S3) ====================
+      function uint8ToBase64(bytes) {
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+      }
+
+      function updateOtaProgressUi(written, total, statusText) {
+        const pct = total > 0 ? Math.min(100, Math.round((written / total) * 100)) : 0;
+        document.getElementById('otaProgressBar').style.width = pct + '%';
+        document.getElementById('otaPercentInfo').textContent = pct + '%';
+        document.getElementById('otaBytesInfo').textContent = `${(written / 1024).toFixed(1)} / ${(total / 1024).toFixed(1)} КБ`;
+        if (statusText) document.getElementById('otaStateLabel').textContent = statusText;
+      }
+
+      function waitForOtaResponse(timeoutMs = 8000) {
+        return new Promise((resolve) => {
+          const timer = setTimeout(() => {
+            state.otaAckResolver = null;
+            resolve({ ok: false, msg: 'Таймаут ответа от ESP32-S3' });
+          }, timeoutMs);
+          state.otaAckResolver = (res) => {
+            clearTimeout(timer);
+            state.otaAckResolver = null;
+            resolve(res);
+          };
+        });
+      }
+
+      async function runOtaUpdate(binUint8Array, labelName) {
+        if (state.otaUploading) return;
+        const total = binUint8Array.length;
+        if (total < 16) {
+          showToast('Файл прошивки слишком мал или пуст', 'err');
+          return;
+        }
+        if (binUint8Array[0] !== 0xE9) {
+          showToast('Предупреждение: первый байт не 0xE9 (проверьте, что это .bin для ESP32-S3)', 'warn');
+        }
+
+        state.otaUploading = true;
+        document.getElementById('btnStartOta').disabled = true;
+        document.getElementById('btnStartOtaText').textContent = 'Идёт прошивка...';
+        updateOtaProgressUi(0, total, 'Инициализация раздела Flash...');
+
+        if (!state.connectedUsb || !state.writer) {
+          appendLog(`[OTA DEMO] Старт прошивки "${labelName}" (${total} байт)`, 'sys');
+          let simWritten = 0;
+          const step = Math.max(4096, Math.floor(total / 25));
+          const interval = setInterval(() => {
+            simWritten = Math.min(total, simWritten + step);
+            updateOtaProgressUi(simWritten, total, simWritten < total ? 'Запись блоков во Flash...' : 'Проверка контрольной суммы и перезапуск...');
+            if (simWritten >= total) {
+              clearInterval(interval);
+              setTimeout(() => {
+                state.otaUploading = false;
+                document.getElementById('btnStartOta').disabled = false;
+                document.getElementById('btnStartOtaText').textContent = 'Установить прошивку (OTA)';
+                updateOtaProgressUi(total, total, 'Готово! Прошивка обновлена');
+                handleIncomingSerialLine(JSON.stringify({ ev: 'ota_done' }));
+              }, 500);
+            }
+          }, 110);
+          return;
+        }
+
+        try {
+          const readyPromise = waitForOtaResponse(10000);
+          await sendJsonCommand({ cmd: 'ota_begin', size: total });
+          const readyRes = await readyPromise;
+          if (!readyRes.ok) {
+            throw new Error(readyRes.msg || 'ESP32-S3 не подтвердил начало OTA');
+          }
+
+          const CHUNK_SIZE = 512;
+          for (let offset = 0; offset < total; offset += CHUNK_SIZE) {
+            const slice = binUint8Array.subarray(offset, Math.min(total, offset + CHUNK_SIZE));
+            const b64 = uint8ToBase64(slice);
+            const ackPromise = waitForOtaResponse(8000);
+
+            const rawCmd = JSON.stringify({ cmd: 'ota_chunk', d: b64 }) + '\n';
+            await state.writer.write(new TextEncoder().encode(rawCmd));
+
+            const ackRes = await ackPromise;
+            if (!ackRes.ok) {
+              throw new Error(ackRes.msg || 'Ошибка записи блока OTA');
+            }
+            updateOtaProgressUi(ackRes.written || (offset + slice.length), total, 'Запись во Flash (USB OTA)...');
+          }
+
+          updateOtaProgressUi(total, total, 'Финализация и переключение загрузочного раздела...');
+          const endPromise = waitForOtaResponse(8000);
+          await sendJsonCommand({ cmd: 'ota_end' });
+          const endRes = await endPromise;
+          if (!endRes.ok) {
+            throw new Error(endRes.msg || 'Ошибка финализации Update.end()');
+          }
+
+          updateOtaProgressUi(total, total, 'Успешно! ESP32-S3 перезагружается...');
+        } catch (err) {
+          const msg = err && err.message ? err.message : String(err);
+          updateOtaProgressUi(0, total, 'Ошибка: ' + msg);
+          showToast('Сбой OTA: ' + msg, 'err');
+        } finally {
+          state.otaUploading = false;
+          document.getElementById('btnStartOta').disabled = false;
+          document.getElementById('btnStartOtaText').textContent = 'Установить прошивку (OTA)';
+        }
+      }
+
+      const otaFileInput = document.getElementById('otaFileInput');
+      otaFileInput.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          state.otaBuffer = new Uint8Array(reader.result);
+          state.otaFileName = file.name;
+          document.getElementById('otaFileName').textContent = `Выбран файл: ${file.name}`;
+          const magicOk = state.otaBuffer[0] === 0xE9 ? 'Валидный образ ESP32 (0xE9)' : 'Нестандартный заголовок';
+          document.getElementById('otaFileMeta').textContent = `Размер: ${(state.otaBuffer.length / 1024).toFixed(1)} КБ • ${magicOk}`;
+          updateOtaProgressUi(0, state.otaBuffer.length, 'Готов к прошивке');
+          showToast(`Образ ${file.name} загружен в браузер`, 'ok');
+        };
+        reader.readAsArrayBuffer(file);
+      });
+
+      document.getElementById('btnFetchOtaUrl').addEventListener('click', async () => {
+        const url = document.getElementById('otaUrlInput').value.trim();
+        if (!url) {
+          showToast('Введите прямую ссылку на .bin файл', 'warn');
+          return;
+        }
+        try {
+          document.getElementById('otaStateLabel').textContent = 'Скачивание .bin по ссылке...';
+          const resp = await fetch(url);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const buf = await resp.arrayBuffer();
+          state.otaBuffer = new Uint8Array(buf);
+          state.otaFileName = url.split('/').pop() || 'remote_firmware.bin';
+          document.getElementById('otaFileName').textContent = `Загружен по URL: ${state.otaFileName}`;
+          document.getElementById('otaFileMeta').textContent = `Размер: ${(state.otaBuffer.length / 1024).toFixed(1)} КБ`;
+          updateOtaProgressUi(0, state.otaBuffer.length, 'Готов к прошивке');
+          showToast('Файл прошивки скачан по URL!', 'ok');
+        } catch (err) {
+          document.getElementById('otaStateLabel').textContent = 'Не удалось скачать по ссылке (CORS или сеть)';
+          showToast('Ошибка скачивания по URL — выберите .bin файл с диска', 'err');
+        }
+      });
+
+      document.getElementById('btnStartOta').addEventListener('click', () => {
+        if (!state.otaBuffer || state.otaBuffer.length === 0) {
+          showToast('Сначала выберите файл прошивки (.bin)!', 'warn');
+          return;
+        }
+        openConfirmModal(
+          'Запустить обновление прошивки по USB OTA?',
+          `Образ "${state.otaFileName}" (${(state.otaBuffer.length / 1024).toFixed(1)} КБ) будет записан во второй раздел Flash-памяти ESP32-S3, после чего стик автоматически перезагрузится.`,
+          () => runOtaUpdate(state.otaBuffer, state.otaFileName)
+        );
+      });
+
+      document.getElementById('btnDemoOtaTest').addEventListener('click', () => {
+        const fakeImg = new Uint8Array(262144);
+        fakeImg[0] = 0xE9;
+        state.otaBuffer = fakeImg;
+        state.otaFileName = 'esp32s3_hid_bridge_v2.7_ota.bin';
+        document.getElementById('otaFileName').textContent = `Тестовый образ: ${state.otaFileName}`;
+        document.getElementById('otaFileMeta').textContent = 'Размер: 256.0 КБ • Валидный образ ESP32 (0xE9)';
+        runOtaUpdate(state.otaBuffer, state.otaFileName);
+      });
+
+      document.getElementById('btnOtaRollback').addEventListener('click', () => {
+        openConfirmModal(
+          'Откатить прошивку на предыдущую версию?',
+          'ESP32-S3 переключит активный загрузочный раздел (app0 ↔ app1) на предыдущую рабочую прошивку и перезагрузится.',
+          () => sendJsonCommand({ cmd: 'ota_rollback' })
+        );
+      });
+
+      // Modal buttons
+      document.getElementById('btnModalCancel').addEventListener('click', closeConfirmModal);
+      document.getElementById('btnModalConfirm').addEventListener('click', () => {
+        if (typeof modalCallback === 'function') modalCallback();
+        closeConfirmModal();
+      });
+
+      // Start in Demo mode initially so all panels are populated and interactive
+      enableDemoMode(false);
+      appendLog('Веб-консоль инициализирована. Нажмите «Подключить стик (USB)» для связи с ESP32-S3.', 'sys');
+    });
+  </script>
+</body>
+</html>
