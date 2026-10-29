@@ -1,5 +1,5 @@
 /*
- * ESP32-S3 BLE HID Central -> Wired USB Composite HID Bridge (v3.0 FIXED)
+ * ESP32-S3 BLE HID Central -> Wired USB Composite HID Bridge (v2.9)
  * - Умная индикация LED / WS2812 RGB: Поиск (4 Гц), Нет девайсов (маячок 1.6 с), Подключение (3 вспышки + горит), Отключение (5 вспышек)
  * - Индивидуальный профиль раскодировки (fmt) и чувствительности (scale) для КАЖДОГО MAC-адреса в NVS
  * - Полная поддержка джойстика Google Stadia Controller (BLE режим: 10 байт, стики, триггеры L2/R2, 15 кнопок, D-Pad)
@@ -17,12 +17,7 @@
 #include "USBHIDKeyboard.h"
 #include "USBHIDMouse.h"
 #include "USBHIDConsumerControl.h"
-#if __has_include("USBHIDGamepad.h")
-  #include "USBHIDGamepad.h"
-  #define BRIDGE_HAS_USB_GAMEPAD 1
-#else
-  #define BRIDGE_HAS_USB_GAMEPAD 0
-#endif
+#include "USBHIDGamepad.h"
 #include <NimBLEDevice.h>
 #include <Preferences.h>
 #include <Update.h>
@@ -44,13 +39,8 @@
 USBHIDKeyboard Keyboard;
 USBHIDMouse Mouse;
 USBHIDConsumerControl ConsumerControl;
-#if BRIDGE_HAS_USB_GAMEPAD
 USBHIDGamepad Gamepad;
-#endif
 Preferences prefs;
-
-static constexpr uint8_t WS2812_PIN = 21;
-#define HID_PACKET_DEBUG 0
 
 static NimBLEUUID hidServiceUUID((uint16_t)0x1812);
 static NimBLEUUID reportMapUUID((uint16_t)0x2A4B);
@@ -60,15 +50,22 @@ static NimBLEUUID bootKbUUID((uint16_t)0x2A22);
 static NimBLEUUID bootMouseUUID((uint16_t)0x2A33);
 static NimBLEUUID reportRefUUID((uint16_t)0x2908);
 
-// Один атомарный USB HID report вместо отдельных press/release/move.
+// Быстрая отправка состояния кнопок и осей в USBHIDMouse без лишних пакетов
 void sendUsbMouse(uint8_t buttons, int8_t x, int8_t y, int8_t wheel, int8_t pan) {
-  hid_mouse_report_t report;
-  report.buttons = buttons;
-  report.x = x;
-  report.y = y;
-  report.wheel = wheel;
-  report.pan = pan;
-  Mouse.sendReport(report);
+  static uint8_t prevBtns = 0;
+  uint8_t changed = buttons ^ prevBtns;
+  if (changed) {
+    for (uint8_t mask = 1; mask <= 0x10; mask <<= 1) {
+      if (changed & mask) {
+        if (buttons & mask) Mouse.press(mask);
+        else Mouse.release(mask);
+      }
+    }
+    prevBtns = buttons;
+  }
+  if (x != 0 || y != 0 || wheel != 0 || pan != 0) {
+    Mouse.move(x, y, wheel, pan);
+  }
 }
 
 struct BridgeConfig {
@@ -82,7 +79,7 @@ struct BridgeConfig {
   bool autoReconnect = true;
   uint8_t ledMode = 2;
   uint8_t ledPin = 48;
-  uint8_t ledType = 2;    // 0=Digital LED, 1=WS2812 RGB на ledPin, 2=Авто-Комбо (Digital ledPin + WS2812 на GPIO 21)
+  uint8_t ledType = 2;    // 0=Digital LED, 1=WS2812 RGB на GPIO 21, 2=Авто-Комбо (Digital ledPin + WS2812 на GPIO 21)
   uint8_t mouseFmt = 0;   // Глобальный по умолчанию: 0=Auto(0x2A4B), 1=16b_1B, 2=16b_2B, 3=12b_1B, 4=12b_2B, 5=8b
   uint8_t kbFmt = 0;      // Глобальный по умолчанию: 0=Auto(0x2A4B), 1=Boot(0x2A22), 2=Std8B, 3=NoRes, 4=Bitmap
   uint8_t gpMode = 0;     // 0=Нативный USB Gamepad, 1=Эмуляция Клавиатура(WASD) + Мышь
@@ -142,8 +139,7 @@ struct ReportLayout {
   uint8_t  bmpUsageMin = 0;
 };
 
-// Явный прототип нужен Arduino-препроцессору: без него автоматически
-// созданное объявление функции оказывалось выше определения ReportLayout.
+// Явный прототип нужен, чтобы Arduino preprocessor не вынес его выше ReportLayout.
 int parseHidReportMap(const uint8_t* desc, size_t len, ReportLayout* outLayouts, int maxLayouts);
 
 struct SubscribedCharInfo {
@@ -178,9 +174,10 @@ uint8_t targetConnectType = 1;
 String targetConnectName = "BLE HID";
 
 uint32_t packetCounter = 0;
-uint32_t lastHidInputMs = 0;
 uint32_t lastReconnectTry = 0;
 uint32_t lastStatusPush = 0;
+uint32_t lastHidInputMs = 0;
+uint8_t reconnectCursor = 0;
 String serialBuffer = "";
 
 // Переменные состояния USB WebSerial OTA
@@ -246,6 +243,8 @@ void writeRgbSafe(uint8_t pin, uint8_t r, uint8_t g, uint8_t b) {
 #endif
 }
 
+static constexpr uint8_t WS2812_PIN = 21;
+
 void setLedHardware(bool on, uint8_t r, uint8_t g, uint8_t b) {
   if (cfg.ledMode == 0) {
     on = false; r = 0; g = 0; b = 0;
@@ -258,12 +257,16 @@ void setLedHardware(bool on, uint8_t r, uint8_t g, uint8_t b) {
     lastLedPhysOn = on;
     lastRgbR = rr; lastRgbG = gg; lastRgbB = bb;
 
-    if ((cfg.ledType == 0 || cfg.ledType == 2) && cfg.ledPin != WS2812_PIN) {
+    if (cfg.ledType == 0) {
       digitalWrite(cfg.ledPin, on ? HIGH : LOW);
-    }
-    if (cfg.ledType == 1) {
+    } else if (cfg.ledType == 1) {
+      // WS2812 на этой плате физически подключён к GPIO 21.
       writeRgbSafe(WS2812_PIN, rr, gg, bb);
     } else if (cfg.ledType == 2) {
+      // В комбо-режиме нельзя подавать обычный HIGH/LOW на линию данных WS2812.
+      if (cfg.ledPin != WS2812_PIN) {
+        digitalWrite(cfg.ledPin, on ? HIGH : LOW);
+      }
       writeRgbSafe(WS2812_PIN, rr, gg, bb);
     }
   }
@@ -312,6 +315,7 @@ int parseHidReportMap(const uint8_t* desc, size_t len, ReportLayout* outLayouts,
   uint16_t reportSize = 0;
   uint16_t reportCount = 0;
   uint16_t usageMin = 0;
+  uint16_t usageMax = 0;
   uint16_t usages[16];
   int      usageCnt = 0;
   int      collDepth = 0;
@@ -360,7 +364,7 @@ int parseHidReportMap(const uint8_t* desc, size_t len, ReportLayout* outLayouts,
     } else if (bType == 2) { // Local
       if (bTag == 0x0 && usageCnt < 16) usages[usageCnt++] = val;
       else if (bTag == 0x1) usageMin = val;
-      else if (bTag == 0x2) { /* Usage Maximum не нужен текущему декодеру */ }
+      else if (bTag == 0x2) usageMax = val;
     } else if (bType == 0) { // Main
       if (bTag == 0xA) { // Collection
         if (collDepth == 0) {
@@ -439,6 +443,7 @@ int parseHidReportMap(const uint8_t* desc, size_t len, ReportLayout* outLayouts,
       }
       usageCnt = 0;
       usageMin = 0;
+      usageMax = 0;
     }
   }
   return count;
@@ -533,7 +538,7 @@ void sendStatusJson() {
   if (otaInProgress) return;
   const esp_partition_t* running = esp_ota_get_running_partition();
   const char* partLabel = running ? running->label : "app0";
-  CONSOLE.print("{\"ev\":\"status\",\"ver\":\"3.0-FIXED\",\"part\":\"");
+  CONSOLE.print("{\"ev\":\"status\",\"ver\":\"3.1.1-LED-FIX\",\"part\":\"");
   CONSOLE.print(partLabel);
   CONSOLE.print("\",\"otaFree\":");
   CONSOLE.print(ESP.getFreeSketchSpace());
@@ -610,9 +615,7 @@ void processKeyboardReport(const uint8_t* pData, size_t length, const ReportLayo
 
   report.modifiers = mods;
   Keyboard.sendReport(&report);
-#if HID_PACKET_DEBUG
   CONSOLE.printf("{\"ev\":\"hid_kb\",\"mod\":%d,\"k0\":%d,\"k1\":%d}\n", mods, report.keys[0], report.keys[1]);
-#endif
 }
 
 void processMouseReport(const uint8_t* pData, size_t length, const ReportLayout* lay, uint8_t overrideMouseFmt = 0, uint8_t overrideScale10 = 0) {
@@ -682,9 +685,7 @@ void processMouseReport(const uint8_t* pData, size_t length, const ReportLayout*
 
   sendUsbMouse(buttons, x, y, wheel, pan);
 
-#if HID_PACKET_DEBUG
   CONSOLE.printf("{\"ev\":\"hid_ms\",\"btn\":%d,\"x\":%d,\"y\":%d,\"w\":%d}\n", buttons, x, y, wheel);
-#endif
 }
 
 // Обработчик джойстика Google Stadia Controller (BLE Report 0x03) и универсальных BLE-геймпадов
@@ -739,7 +740,6 @@ void processGamepadReport(const uint8_t* pData, size_t length, uint8_t overrideG
     usbBtns = rawBtns;
   }
 
-#if BRIDGE_HAS_USB_GAMEPAD
   if (cfg.gpMode == 0) {
     // Режим 0: Нативный USB HID Геймпад (TinyUSB Gamepad)
     uint8_t usbHat = (rawHat <= 7) ? (rawHat + 1) : 0; // TinyUSB: 0=Center, 1=N .. 8=NW
@@ -753,9 +753,7 @@ void processGamepadReport(const uint8_t* pData, size_t length, uint8_t overrideG
       usbHat,
       usbBtns
     );
-  } else
-#endif
-  {
+  } else {
     // Режим 1: Аппаратная эмуляция Клавиатура (WASD) + Мышь (Правый стик + L2/R2)
     KeyReport kRpt = {0, 0, {0, 0, 0, 0, 0, 0}};
     int kIdx = 0;
@@ -788,10 +786,8 @@ void processGamepadReport(const uint8_t* pData, size_t length, uint8_t overrideG
     sendUsbMouse(mBtns, mx, my, 0, 0);
   }
 
-#if HID_PACKET_DEBUG
   CONSOLE.printf("{\"ev\":\"hid_gp\",\"hat\":%d,\"btn\":%u,\"lx\":%d,\"ly\":%d,\"rx\":%d,\"ry\":%d,\"l2\":%d,\"r2\":%d}\n",
                  rawHat, (unsigned int)usbBtns, lx, ly, rx, ry, l2, r2);
-#endif
 }
 
 // Обработчик входящих BLE HID пакетов
@@ -919,26 +915,6 @@ class ScanCallbacks: public NimBLEScanCallbacks {
   }
 };
 
-class BridgeClientCallbacks: public NimBLEClientCallbacks {
-  void onDisconnect(NimBLEClient* pClient, int reason) override {
-    String peer = pClient->getPeerAddress().toString().c_str();
-    for (int i = 0; i < savedCount; i++) {
-      if (savedBonds[i].mac.equalsIgnoreCase(peer)) {
-        savedBonds[i].connected = false;
-        break;
-      }
-    }
-
-    // Не оставляем на компьютере зажатую клавишу или кнопку после потери BLE.
-    Keyboard.releaseAll();
-    sendUsbMouse(0, 0, 0, 0, 0);
-    ConsumerControl.release();
-    triggerLedEvent(LED_EV_DISCONNECTED);
-  }
-};
-
-BridgeClientCallbacks bridgeClientCallbacks;
-
 bool connectToBleDevice(const String& mac, uint8_t addrType, const String& name, bool reportFailure = true) {
   NimBLEDevice::getScan()->stop();
   isScanning = false;
@@ -949,8 +925,6 @@ bool connectToBleDevice(const String& mac, uint8_t addrType, const String& name,
     pClient = NimBLEDevice::createClient();
   }
 
-  pClient->setClientCallbacks(&bridgeClientCallbacks, false);
-  // 6..12 * 1.25 мс = 7.5..15 мс, latency=0.
   pClient->setConnectionParams(6, 12, 0, 400);
   pClient->setConnectTimeout(2500);
   if (!pClient->connect(addr)) {
@@ -1001,12 +975,8 @@ bool connectToBleDevice(const String& mac, uint8_t addrType, const String& name,
   String lowerName = name;
   lowerName.toLowerCase();
   uint8_t autoFmt = 0;
-  if (lowerName.indexOf("stadia") >= 0) {
-    autoFmt = 10;
-  } else if (lowerName.indexOf("mx keys") >= 0) {
-    // Для MX Keys Mini используем стабильный Boot report 0x2A22.
-    autoFmt = 6;
-  }
+  if (lowerName.indexOf("stadia") >= 0) autoFmt = 10;
+  else if (lowerName.indexOf("mx keys") >= 0) autoFmt = 6;
   int bIdx = findOrAddBond(mac, addrType, name, true, autoFmt);
   uint8_t bondFmt = (bIdx >= 0) ? savedBonds[bIdx].fmt : 0;
 
@@ -1183,15 +1153,10 @@ void updateLedEngine() {
   }
 
   if (activeCount > 0) {
-    // На связи: зелёный, раз в 5 секунд короткий синий импульс состояния.
     bool connectedPulse = (now % 5000) < 140;
-    if (connectedPulse) {
-      setLedHardware(true, 0, 30, 85);
-    } else {
-      setLedHardware(true, 0, 35, 8);
-    }
+    if (connectedPulse) setLedHardware(true, 0, 30, 85);
+    else setLedHardware(true, 0, 35, 8);
   } else {
-    // Нет устройств: короткая красная вспышка раз в 2 секунды.
     bool idlePulse = (now % 2000) < 160;
     setLedHardware(idlePulse, 70, 0, 0);
   }
@@ -1260,9 +1225,7 @@ void handleSerialCommand(const String& line) {
     cfg.ledMode       = extractJsonInt(line, "ledM", cfg.ledMode);
     cfg.ledPin        = extractJsonInt(line, "ledP", cfg.ledPin);
     cfg.ledType       = extractJsonInt(line, "ledT", cfg.ledType);
-    if (cfg.ledPin != WS2812_PIN && (cfg.ledType == 0 || cfg.ledType == 2)) {
-      pinMode(cfg.ledPin, OUTPUT);
-    }
+    pinMode(cfg.ledPin, OUTPUT);
     cfg.mouseFmt      = extractJsonInt(line, "mFmt", cfg.mouseFmt);
     cfg.kbFmt         = extractJsonInt(line, "kFmt", cfg.kbFmt);
     cfg.gpMode        = extractJsonInt(line, "gpMode", cfg.gpMode);
@@ -1274,7 +1237,12 @@ void handleSerialCommand(const String& line) {
     NimBLEDevice::getScan()->stop();
     isScanning = false;
     otaTotalSize = (size_t)extractJsonInt(line, "size", 0);
-    if (otaTotalSize == 0) otaTotalSize = UPDATE_SIZE_UNKNOWN;
+    if (otaTotalSize == 0 || otaTotalSize > ESP.getFreeSketchSpace()) {
+      CONSOLE.printf("{\"ev\":\"ota_err\",\"msg\":\"Недопустимый размер OTA: %u байт\"}\n", (unsigned int)otaTotalSize);
+      return;
+    }
+    CONSOLE.printf("{\"ev\":\"ota_preparing\",\"size\":%u}\n", (unsigned int)otaTotalSize);
+    CONSOLE.flush();
     if (Update.begin(otaTotalSize, U_FLASH)) {
       otaInProgress = true;
       otaWritten = 0;
@@ -1292,8 +1260,11 @@ void handleSerialCommand(const String& line) {
       size_t w = Update.write(binBuf, decLen);
       if (w != decLen) {
         otaInProgress = false;
+        String otaError = Update.errorString();
+        if (otaError.length() == 0 || otaError == "No Error") otaError = "Flash принял не весь блок OTA";
         Update.abort();
-        CONSOLE.printf("{\"ev\":\"ota_err\",\"msg\":\"%s\"}\n", Update.errorString());
+        CONSOLE.printf("{\"ev\":\"ota_err\",\"msg\":\"%s (%u/%u байт)\"}\n",
+                       otaError.c_str(), (unsigned int)w, (unsigned int)decLen);
         return;
       }
       otaWritten += w;
@@ -1333,24 +1304,17 @@ void setup() {
   CONSOLE.begin(115200);
   loadConfigFromNVS();
 
-  if (cfg.ledPin != WS2812_PIN && (cfg.ledType == 0 || cfg.ledType == 2)) {
-    pinMode(cfg.ledPin, OUTPUT);
-    digitalWrite(cfg.ledPin, LOW);
-  }
+  pinMode(cfg.ledPin, OUTPUT);
+  digitalWrite(cfg.ledPin, LOW);
+  // Гасим оба RGB-пина, которые использовали предыдущие версии, чтобы убрать защёлкнутый цвет после OTA-restart.
+  writeRgbSafe(48, 0, 0, 0);
   writeRgbSafe(WS2812_PIN, 0, 0, 0);
 
   Keyboard.begin();
   Mouse.begin();
   ConsumerControl.begin();
-#if BRIDGE_HAS_USB_GAMEPAD
   Gamepad.begin();
-#endif
   USB.begin();
-
-  // Короткий фиолетовый тест подтверждает работу WS2812 на GPIO21.
-  writeRgbSafe(WS2812_PIN, 24, 0, 24);
-  delay(80);
-  writeRgbSafe(WS2812_PIN, 0, 0, 0);
 
   NimBLEDevice::init("ESP32-S3-HID-Bridge");
   NimBLEDevice::setSecurityAuth(true, false, true);
@@ -1381,22 +1345,18 @@ void loop() {
     connectToBleDevice(targetConnectMac, targetConnectType, targetConnectName);
   }
 
-  // Не запускаем reconnect во время ввода: старый цикл мог блокировать HID
-  // на несколько секунд при выключенном втором устройстве.
   if (cfg.autoReconnect && !NimBLEDevice::getScan()->isScanning() &&
-      millis() - lastReconnectTry > 8000 && millis() - lastHidInputMs > 1500) {
+      millis() - lastReconnectTry > 8000 && millis() - lastHidInputMs > 1500 && savedCount > 0) {
     lastReconnectTry = millis();
-    static uint8_t reconnectCursor = 0;
-    for (int i = 0; i < savedCount; i++) {
-      int idx = (reconnectCursor + i) % savedCount;
-      NimBLEAddress addr(savedBonds[idx].mac.c_str(), savedBonds[idx].addrType);
+    for (int n = 0; n < savedCount; n++) {
+      int i = (reconnectCursor + n) % savedCount;
+      NimBLEAddress addr(savedBonds[i].mac.c_str(), savedBonds[i].addrType);
       NimBLEClient* pCli = NimBLEDevice::getClientByPeerAddress(addr);
       bool isConn = (pCli && pCli->isConnected());
-      savedBonds[idx].connected = isConn;
+      savedBonds[i].connected = isConn;
       if (!isConn) {
-        reconnectCursor = (idx + 1) % savedCount;
-        // Фоновая проверка должна восстанавливать связь без повторяющихся уведомлений в WebSerial.
-        connectToBleDevice(savedBonds[idx].mac, savedBonds[idx].addrType, savedBonds[idx].name, false);
+        reconnectCursor = (i + 1) % savedCount;
+        connectToBleDevice(savedBonds[i].mac, savedBonds[i].addrType, savedBonds[i].name, false);
         break;
       }
     }

@@ -75,7 +75,7 @@
         <div>
           <div class="flex items-center gap-2">
             <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">ESP32-S3 HID Dongle Console</h1>
-            <span class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">v0.7.1 FIXED — GPIO21 + Low Latency + MX Mini + Stadia</span>
+            <span class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">v0.7.2</span>
           </div>
           <p class="text-xs text-slate-400">Мост BLE Клавиатура/Мышь → Проводной USB HID</p>
         </div>
@@ -731,8 +731,8 @@
                 </svg>
                 <span id="btnStartOtaText">Установить прошивку (OTA)</span>
               </button>
-              <button id="btnDemoOtaTest" type="button" class="px-3 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-amber-300 transition" title="Проверить процесс OTA на тестовом образе">
-                Тест OTA
+              <button id="btnDemoOtaTest" type="button" class="px-3 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-amber-300 transition" title="Запросить текущий статус ESP32-S3 без записи во Flash">
+                Проверить связь
               </button>
             </div>
           </div>
@@ -1226,14 +1226,20 @@
           showToast('Настройки сохранены в NVS память стика!', 'ok');
         } else if (msg.ev === 'ota_ready') {
           if (state.otaAckResolver) state.otaAckResolver({ ok: true, ready: true });
+        } else if (msg.ev === 'ota_preparing') {
+          const otaLabel = document.getElementById('otaStateLabel');
+          if (otaLabel) otaLabel.textContent = 'Подготовка и очистка OTA-раздела...';
         } else if (msg.ev === 'ota_ack') {
           if (state.otaAckResolver) state.otaAckResolver({ ok: true, written: msg.w });
         } else if (msg.ev === 'ota_done') {
           if (state.otaAckResolver) state.otaAckResolver({ ok: true, done: true });
           showToast('Прошивка успешно установлена! Перезагрузка ESP32-S3...', 'ok');
         } else if (msg.ev === 'ota_err') {
-          if (state.otaAckResolver) state.otaAckResolver({ ok: false, msg: msg.msg });
-          showToast('Ошибка OTA: ' + (msg.msg || 'сбой записи'), 'err');
+          const otaError = (!msg.msg || msg.msg === 'No Error')
+            ? 'Ошибка записи Flash без кода от старой версии прошивки'
+            : msg.msg;
+          if (state.otaAckResolver) state.otaAckResolver({ ok: false, msg: otaError });
+          showToast('Ошибка OTA: ' + otaError, 'err');
         } else if (msg.ev === 'err') {
           showToast(msg.msg || 'Ошибка BLE операции', 'err');
         }
@@ -1767,14 +1773,16 @@
         }
 
         try {
-          const readyPromise = waitForOtaResponse(10000);
+          // Очистка OTA-раздела во Flash иногда занимает заметно больше 10 секунд.
+          const readyPromise = waitForOtaResponse(45000);
           await sendJsonCommand({ cmd: 'ota_begin', size: total });
           const readyRes = await readyPromise;
           if (!readyRes.ok) {
             throw new Error(readyRes.msg || 'ESP32-S3 не подтвердил начало OTA');
           }
 
-          const CHUNK_SIZE = 512;
+          // Небольшие блоки надёжнее проходят через USB CDC и String-буфер ESP32-S3.
+          const CHUNK_SIZE = 256;
           for (let offset = 0; offset < total; offset += CHUNK_SIZE) {
             const slice = binUint8Array.subarray(offset, Math.min(total, offset + CHUNK_SIZE));
             const b64 = uint8ToBase64(slice);
@@ -1863,13 +1871,13 @@
       });
 
       document.getElementById('btnDemoOtaTest').addEventListener('click', () => {
-        const fakeImg = new Uint8Array(262144);
-        fakeImg[0] = 0xE9;
-        state.otaBuffer = fakeImg;
-        state.otaFileName = 'esp32s3_hid_bridge_v2.7_ota.bin';
-        document.getElementById('otaFileName').textContent = `Тестовый образ: ${state.otaFileName}`;
-        document.getElementById('otaFileMeta').textContent = 'Размер: 256.0 КБ • Валидный образ ESP32 (0xE9)';
-        runOtaUpdate(state.otaBuffer, state.otaFileName);
+        if (!state.connectedUsb || !state.writer) {
+          showToast('Сначала подключите ESP32-S3 через WebSerial', 'warn');
+          return;
+        }
+        updateOtaProgressUi(0, state.otaBuffer ? state.otaBuffer.length : 0, 'Связь с ESP32-S3 работает — выберите настоящий OTA .bin');
+        sendJsonCommand({ cmd: 'status' });
+        showToast('Тест связи отправлен. Тестовая запись во Flash отключена.', 'ok');
       });
 
       document.getElementById('btnOtaRollback').addEventListener('click', () => {

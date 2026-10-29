@@ -7,13 +7,6 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Arduino%20Core-3.3.x-00979D?style=flat-square&logo=arduino&logoColor=white" alt="Arduino Core 3.3.x">
-  <img src="https://img.shields.io/badge/NimBLE--Arduino-2.5.x-2563EB?style=flat-square&logo=bluetooth&logoColor=white" alt="NimBLE-Arduino 2.5.x">
-  <img src="https://img.shields.io/badge/console-WebSerial-22C55E?style=flat-square&logo=googlechrome&logoColor=white" alt="WebSerial console">
-  <img src="https://img.shields.io/badge/LED-WS2812%20GPIO%2021-EC4899?style=flat-square" alt="WS2812 GPIO 21">
-</p>
-
-<p align="center">
   <img src="https://img.shields.io/badge/AI%20assisted-Gemini%20Argon-8E75FF?style=for-the-badge&logo=googlegemini&logoColor=white" alt="AI assisted with Gemini Argon">
   <img src="https://img.shields.io/badge/AI%20assisted-ChatGPT%20Sol-10A37F?style=for-the-badge&logo=openai&logoColor=white" alt="AI assisted with ChatGPT Sol">
 </p>
