@@ -229,8 +229,7 @@ size_t decodeBase64(const char* in, size_t inLen, uint8_t* out) {
 enum LedEvent : uint8_t {
   LED_EV_NONE = 0,
   LED_EV_CONNECTED = 1,    // 3 приветственные вспышки при подключении (Зелёный)
-  LED_EV_DISCONNECTED = 2, // 5 быстрых тревожных вспышек при потери связи (Красный)
-  LED_EV_ACTIVITY = 3      // Короткое подмигивание при передаче пакета HID
+  LED_EV_DISCONNECTED = 2  // 5 быстрых тревожных вспышек при потере связи (Красный)
 };
 
 uint8_t  currentLedEvent = LED_EV_NONE;
@@ -271,17 +270,8 @@ void setLedHardware(bool on, uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void triggerLedEvent(uint8_t ev) {
-  if (ev == LED_EV_ACTIVITY && (currentLedEvent == LED_EV_CONNECTED || currentLedEvent == LED_EV_DISCONNECTED)) {
-    return;
-  }
   currentLedEvent = ev;
   ledEventStartMs = millis();
-}
-
-void pulseLed() {
-  if (cfg.ledMode == 2) {
-    triggerLedEvent(LED_EV_ACTIVITY);
-  }
 }
 
 int16_t extractSignedBits(const uint8_t* data, size_t len, uint16_t bitOffset, uint8_t bitSize) {
@@ -809,7 +799,6 @@ void notifyCallback(NimBLERemoteCharacteristic* pChar, uint8_t* pData, size_t le
   if (length == 0) return;
   packetCounter++;
   lastHidInputMs = millis();
-  pulseLed();
 
   uint16_t cHandle = pChar->getHandle();
   uint16_t connH   = pChar->getClient() ? pChar->getClient()->getConnHandle() : 0xFFFF;
@@ -950,7 +939,7 @@ class BridgeClientCallbacks: public NimBLEClientCallbacks {
 
 BridgeClientCallbacks bridgeClientCallbacks;
 
-bool connectToBleDevice(const String& mac, uint8_t addrType, const String& name) {
+bool connectToBleDevice(const String& mac, uint8_t addrType, const String& name, bool reportFailure = true) {
   NimBLEDevice::getScan()->stop();
   isScanning = false;
 
@@ -965,7 +954,9 @@ bool connectToBleDevice(const String& mac, uint8_t addrType, const String& name)
   pClient->setConnectionParams(6, 12, 0, 400);
   pClient->setConnectTimeout(2500);
   if (!pClient->connect(addr)) {
-    CONSOLE.printf("{\"ev\":\"err\",\"msg\":\"Не удалось подключиться к %s\"}\n", mac.c_str());
+    if (reportFailure) {
+      CONSOLE.printf("{\"ev\":\"err\",\"msg\":\"Не удалось подключиться к %s\"}\n", mac.c_str());
+    }
     return false;
   }
 
@@ -974,7 +965,9 @@ bool connectToBleDevice(const String& mac, uint8_t addrType, const String& name)
   pClient->secureConnection();
   NimBLERemoteService* pService = pClient->getService(hidServiceUUID);
   if (!pService) {
-    CONSOLE.printf("{\"ev\":\"err\",\"msg\":\"Служба HID 0x1812 не найдена на %s\"}\n", mac.c_str());
+    if (reportFailure) {
+      CONSOLE.printf("{\"ev\":\"err\",\"msg\":\"Служба HID 0x1812 не найдена на %s\"}\n", mac.c_str());
+    }
     pClient->disconnect();
     return false;
   }
@@ -1157,7 +1150,7 @@ void updateLedEngine() {
     return;
   }
 
-  // 1) Приоритетные вспышки событий: Подключение (3 вспышки), Отключение (5 вспышек), Ввод пакета (подмигивание)
+  // 1) Приоритетные вспышки событий: подключение (зелёные), отключение (красные).
   if (currentLedEvent == LED_EV_CONNECTED) {
     uint32_t el = now - ledEventStartMs;
     if (el < 720) {
@@ -1171,13 +1164,6 @@ void updateLedEngine() {
     if (el < 1000) {
       bool blinkOn = ((el / 100) % 2) == 0;
       setLedHardware(blinkOn, 95, 0, 0); // Ярко-красный (5 быстрых вспышек)
-      return;
-    }
-    currentLedEvent = LED_EV_NONE;
-  } else if (currentLedEvent == LED_EV_ACTIVITY) {
-    uint32_t el = now - ledEventStartMs;
-    if (el < 35) {
-      setLedHardware(false, 0, 0, 0); // Короткая пауза-подмигивание на фоне свечения
       return;
     }
     currentLedEvent = LED_EV_NONE;
@@ -1197,12 +1183,17 @@ void updateLedEngine() {
   }
 
   if (activeCount > 0) {
-    // На связи: постоянное свечение (Зелёный)
-    setLedHardware(true, 0, 35, 8);
+    // На связи: зелёный, раз в 5 секунд короткий синий импульс состояния.
+    bool connectedPulse = (now % 5000) < 140;
+    if (connectedPulse) {
+      setLedHardware(true, 0, 30, 85);
+    } else {
+      setLedHardware(true, 0, 35, 8);
+    }
   } else {
-    // Нет девайсов (Ожидание): короткая одиночная вспышка раз в 1.6 секунды (160 мс ВКЛ / 1440 мс ВЫКЛ, Янтарный)
-    bool idlePulse = (now % 1600) < 160;
-    setLedHardware(idlePulse, 55, 22, 0);
+    // Нет устройств: короткая красная вспышка раз в 2 секунды.
+    bool idlePulse = (now % 2000) < 160;
+    setLedHardware(idlePulse, 70, 0, 0);
   }
 }
 
@@ -1404,7 +1395,8 @@ void loop() {
       savedBonds[idx].connected = isConn;
       if (!isConn) {
         reconnectCursor = (idx + 1) % savedCount;
-        connectToBleDevice(savedBonds[idx].mac, savedBonds[idx].addrType, savedBonds[idx].name);
+        // Фоновая проверка должна восстанавливать связь без повторяющихся уведомлений в WebSerial.
+        connectToBleDevice(savedBonds[idx].mac, savedBonds[idx].addrType, savedBonds[idx].name, false);
         break;
       }
     }

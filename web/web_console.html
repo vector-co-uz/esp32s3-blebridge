@@ -75,7 +75,7 @@
         <div>
           <div class="flex items-center gap-2">
             <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">ESP32-S3 HID Dongle Console</h1>
-            <span class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">v0.7 FIXED — GPIO21 + Low Latency + MX Mini + Stadia</span>
+            <span class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">v0.7.1 FIXED — GPIO21 + Low Latency + MX Mini + Stadia</span>
           </div>
           <p class="text-xs text-slate-400">Мост BLE Клавиатура/Мышь → Проводной USB HID</p>
         </div>
@@ -1043,6 +1043,11 @@
       });
     }
 
+    function isEditingPairedDevice() {
+      const active = document.activeElement;
+      return !!(active && active.matches && active.matches('#pairedList select[data-action]'));
+    }
+
     function renderScanResults() {
       const tbody = document.getElementById('scanResultsBody');
       const hidOnly = document.getElementById('chkFilterHidOnly').checked;
@@ -1180,7 +1185,8 @@
           state.scanning = !!msg.scanning;
           if (Array.isArray(msg.bonds)) {
             state.pairedDevices = msg.bonds;
-            renderPairedDevices();
+            // Не пересоздаём открытый select при очередном статусе (он приходит каждые 2 секунды).
+            if (!isEditingPairedDevice()) renderPairedDevices();
           }
           renderTopStatus();
         } else if (msg.ev === 'scan') {
