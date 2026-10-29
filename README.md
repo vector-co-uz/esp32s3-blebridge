@@ -1,4 +1,4 @@
-# ESP32 S3 BLE Bridge
+<h1 align="center">ESP32 S3 BLE Bridge</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/ESP32--S3-BLE%20Bridge-E7352C?style=for-the-badge&logo=espressif&logoColor=white" alt="ESP32-S3 BLE Bridge">
