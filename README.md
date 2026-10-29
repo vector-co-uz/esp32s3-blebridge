@@ -1,4 +1,4 @@
-<h1 align="center">ESP32 S3 BLE Bridge</h1>
+# ESP32 S3 BLE Bridge
 
 <p align="center">
   <img src="https://img.shields.io/badge/ESP32--S3-BLE%20Bridge-E7352C?style=for-the-badge&logo=espressif&logoColor=white" alt="ESP32-S3 BLE Bridge">
@@ -7,17 +7,25 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/Arduino%20Core-3.3.x-00979D?style=flat-square&logo=arduino&logoColor=white" alt="Arduino Core 3.3.x">
+  <img src="https://img.shields.io/badge/NimBLE--Arduino-2.5.x-2563EB?style=flat-square&logo=bluetooth&logoColor=white" alt="NimBLE-Arduino 2.5.x">
+  <img src="https://img.shields.io/badge/console-WebSerial-22C55E?style=flat-square&logo=googlechrome&logoColor=white" alt="WebSerial console">
+  <img src="https://img.shields.io/badge/LED-WS2812%20GPIO%2021-EC4899?style=flat-square" alt="WS2812 GPIO 21">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/AI%20assisted-Gemini%20Argon-8E75FF?style=for-the-badge&logo=googlegemini&logoColor=white" alt="AI assisted with Gemini Argon">
   <img src="https://img.shields.io/badge/AI%20assisted-ChatGPT%20Sol-10A37F?style=for-the-badge&logo=openai&logoColor=white" alt="AI assisted with ChatGPT Sol">
 </p>
 
-----
-  
 <p align="center">
-USB-адаптер на базе ESP32-S3, который подключается к BLE HID-устройствам и передаёт их ввод на компьютер как проводное USB-устройство.
+  <a href="web/web_console.html">
+    <img src="https://img.shields.io/badge/%F0%9F%8C%90%20Open-WebSerial%20Console-22C55E?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Open WebSerial Console">
+  </a>
 </p>
-  
-----
+
+USB-адаптер на базе ESP32-S3, который подключается к BLE HID-устройствам и передаёт их ввод на компьютер как проводное USB-устройство.
+
 ```text
 BLE-клавиатура / мышь / геймпад → ESP32-S3 → USB HID → компьютер
 ```
