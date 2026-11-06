@@ -75,7 +75,7 @@
         <div>
           <div class="flex items-center gap-2">
             <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">ESP32-S3 HID Dongle Console</h1>
-            <span id="firmwareVersionBadge" class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">FW: 0.7.3</span>
+            <span id="firmwareVersionBadge" class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">FW: 0.7.4</span>
           </div>
           <p class="text-xs text-slate-400">Мост BLE Клавиатура/Мышь → Проводной USB HID</p>
         </div>
@@ -576,6 +576,14 @@
             </button>
           </div>
 
+          <!-- Security Notice -->
+          <div class="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-200 flex items-start gap-2.5">
+            <svg class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            <div>
+              <span class="font-semibold text-emerald-300">Безопасность:</span> логирование нажатий клавиш в серийный порт отключено для защиты паролей от кейлоггинга.
+            </div>
+          </div>
+
           <!-- Keyboard Visualizer -->
           <div class="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2.5">
             <div class="flex items-center justify-between text-xs">
@@ -1046,6 +1054,38 @@
       return !!(active && active.matches && active.matches('#pairedList select[data-action]'));
     }
 
+    function isEditingSettings() {
+      const active = document.activeElement;
+      return !!(active && active.closest && active.closest('#tab-settings'));
+    }
+
+    function applyDeviceConfigToUi(cfg) {
+      if (!cfg) return;
+      if (cfg.mScale !== undefined) {
+        const el = document.getElementById('rngMouseScale');
+        if (el) { el.value = cfg.mScale; document.getElementById('lblMouseScale').textContent = (cfg.mScale / 10).toFixed(1) + 'x'; }
+      }
+      if (cfg.sScale !== undefined) {
+        const el = document.getElementById('rngScrollScale');
+        if (el) { el.value = cfg.sScale; document.getElementById('lblScrollScale').textContent = cfg.sScale + 'x'; }
+      }
+      if (cfg.swapBtn !== undefined) document.getElementById('chkSwapMouseBtns').checked = (cfg.swapBtn === 1 || cfg.swapBtn === true);
+      if (cfg.invWhl !== undefined) document.getElementById('chkInvertWheel').checked = (cfg.invWhl === 1 || cfg.invWhl === true);
+      if (cfg.invXY !== undefined) document.getElementById('chkInvertXY').checked = (cfg.invXY === 1 || cfg.invXY === true);
+      if (cfg.swapWA !== undefined) document.getElementById('chkSwapWinAlt').checked = (cfg.swapWA === 1 || cfg.swapWA === true);
+      if (cfg.bootP !== undefined) document.getElementById('chkBootProtocol').checked = (cfg.bootP === 1 || cfg.bootP === true);
+      if (cfg.autoRec !== undefined) document.getElementById('chkAutoReconnect').checked = (cfg.autoRec === 1 || cfg.autoRec === true);
+      if (cfg.ledM !== undefined) document.getElementById('selLedMode').value = String(cfg.ledM);
+      if (cfg.mFmt !== undefined) document.getElementById('selMouseFmt').value = String(cfg.mFmt);
+      if (cfg.kFmt !== undefined) document.getElementById('selKbFmt').value = String(cfg.kFmt);
+      if (cfg.gpMode !== undefined) document.getElementById('selGpMode').value = String(cfg.gpMode);
+      if (cfg.gpFmt !== undefined) document.getElementById('selGpFmt').value = String(cfg.gpFmt);
+      if (cfg.gpDz !== undefined) {
+        const el = document.getElementById('rngGpDeadzone');
+        if (el) { el.value = cfg.gpDz; document.getElementById('lblGpDeadzone').textContent = String(cfg.gpDz); }
+      }
+    }
+
     function renderScanResults() {
       const tbody = document.getElementById('scanResultsBody');
       const hidOnly = document.getElementById('chkFilterHidOnly').checked;
@@ -1185,6 +1225,9 @@
           state.freeHeap = msg.heap || state.freeHeap;
           state.packetCount = msg.pkts || state.packetCount;
           state.scanning = !!msg.scanning;
+          if (msg.cfg && !isEditingSettings()) {
+            applyDeviceConfigToUi(msg.cfg);
+          }
           if (Array.isArray(msg.bonds)) {
             state.pairedDevices = msg.bonds;
             // Не пересоздаём открытый select при очередном статусе (он приходит каждые 2 секунды).

@@ -50,20 +50,17 @@ static NimBLEUUID bootKbUUID((uint16_t)0x2A22);
 static NimBLEUUID bootMouseUUID((uint16_t)0x2A33);
 static NimBLEUUID reportRefUUID((uint16_t)0x2908);
 
-// Быстрая отправка состояния кнопок и осей в USBHIDMouse без лишних пакетов
+// Быстрая отправка состояния кнопок и осей в USBHIDMouse
 void sendUsbMouse(uint8_t buttons, int8_t x, int8_t y, int8_t wheel, int8_t pan) {
   static uint8_t prevBtns = 0;
-  uint8_t changed = buttons ^ prevBtns;
-  if (changed) {
-    for (uint8_t mask = 1; mask <= 0x10; mask <<= 1) {
-      if (changed & mask) {
-        if (buttons & mask) Mouse.press(mask);
-        else Mouse.release(mask);
-      }
-    }
+  bool btnsChanged = (buttons != prevBtns);
+  bool moved = (x != 0 || y != 0 || wheel != 0 || pan != 0);
+
+  if (btnsChanged) {
+    Mouse.buttons(buttons);
     prevBtns = buttons;
   }
-  if (x != 0 || y != 0 || wheel != 0 || pan != 0) {
+  if (moved) {
     Mouse.move(x, y, wheel, pan);
   }
 }
@@ -185,7 +182,7 @@ bool otaInProgress = false;
 size_t otaTotalSize = 0;
 size_t otaWritten = 0;
 
-size_t decodeBase64(const char* in, size_t inLen, uint8_t* out) {
+size_t decodeBase64(const char* in, size_t inLen, uint8_t* out, size_t maxOutLen) {
   static const int8_t T[256] = {
     -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
     -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
@@ -215,7 +212,9 @@ size_t decodeBase64(const char* in, size_t inLen, uint8_t* out) {
     val = (val << 6) + d;
     valb += 6;
     if (valb >= 0) {
-      out[outLen++] = (uint8_t)((val >> valb) & 0xFF);
+      if (outLen < maxOutLen) {
+        out[outLen++] = (uint8_t)((val >> valb) & 0xFF);
+      }
       valb -= 8;
     }
   }
@@ -550,7 +549,22 @@ void sendStatusJson() {
   CONSOLE.print(packetCounter);
   CONSOLE.print(",\"scanning\":");
   CONSOLE.print(NimBLEDevice::getScan()->isScanning() ? "true" : "false");
-  CONSOLE.print(",\"bonds\":[");
+  CONSOLE.print(",\"cfg\":{");
+  CONSOLE.print("\"mScale\":"); CONSOLE.print(cfg.mouseScale10);
+  CONSOLE.print(",\"sScale\":"); CONSOLE.print(cfg.scrollScale);
+  CONSOLE.print(",\"swapBtn\":"); CONSOLE.print(cfg.swapMouseBtns ? 1 : 0);
+  CONSOLE.print(",\"invWhl\":"); CONSOLE.print(cfg.invertWheel ? 1 : 0);
+  CONSOLE.print(",\"invXY\":"); CONSOLE.print(cfg.invertXY ? 1 : 0);
+  CONSOLE.print(",\"swapWA\":"); CONSOLE.print(cfg.swapWinAlt ? 1 : 0);
+  CONSOLE.print(",\"bootP\":"); CONSOLE.print(cfg.bootProtocol ? 1 : 0);
+  CONSOLE.print(",\"autoRec\":"); CONSOLE.print(cfg.autoReconnect ? 1 : 0);
+  CONSOLE.print(",\"ledM\":"); CONSOLE.print(cfg.ledMode);
+  CONSOLE.print(",\"mFmt\":"); CONSOLE.print(cfg.mouseFmt);
+  CONSOLE.print(",\"kFmt\":"); CONSOLE.print(cfg.kbFmt);
+  CONSOLE.print(",\"gpMode\":"); CONSOLE.print(cfg.gpMode);
+  CONSOLE.print(",\"gpFmt\":"); CONSOLE.print(cfg.gpFmt);
+  CONSOLE.print(",\"gpDz\":"); CONSOLE.print(cfg.gpDeadzone);
+  CONSOLE.print("},\"bonds\":[");
   for (int i = 0; i < savedCount; i++) {
     if (i > 0) CONSOLE.print(",");
     CONSOLE.print("{\"mac\":\"" + savedBonds[i].mac + "\",\"type\":" + String(savedBonds[i].addrType) +
@@ -615,7 +629,6 @@ void processKeyboardReport(const uint8_t* pData, size_t length, const ReportLayo
 
   report.modifiers = mods;
   Keyboard.sendReport(&report);
-  CONSOLE.printf("{\"ev\":\"hid_kb\",\"mod\":%d,\"k0\":%d,\"k1\":%d}\n", mods, report.keys[0], report.keys[1]);
 }
 
 void processMouseReport(const uint8_t* pData, size_t length, const ReportLayout* lay, uint8_t overrideMouseFmt = 0, uint8_t overrideScale10 = 0) {
@@ -684,8 +697,6 @@ void processMouseReport(const uint8_t* pData, size_t length, const ReportLayout*
   int8_t pan = (int8_t)constrain(rawPan, -127, 127);
 
   sendUsbMouse(buttons, x, y, wheel, pan);
-
-  CONSOLE.printf("{\"ev\":\"hid_ms\",\"btn\":%d,\"x\":%d,\"y\":%d,\"w\":%d}\n", buttons, x, y, wheel);
 }
 
 // Обработчик джойстика Google Stadia Controller (BLE Report 0x03) и универсальных BLE-геймпадов
@@ -785,14 +796,11 @@ void processGamepadReport(const uint8_t* pData, size_t length, uint8_t overrideG
     int8_t my = (int8_t)constrain((ry * scale10) / 80, -127, 127);
     sendUsbMouse(mBtns, mx, my, 0, 0);
   }
-
-  CONSOLE.printf("{\"ev\":\"hid_gp\",\"hat\":%d,\"btn\":%u,\"lx\":%d,\"ly\":%d,\"rx\":%d,\"ry\":%d,\"l2\":%d,\"r2\":%d}\n",
-                 rawHat, (unsigned int)usbBtns, lx, ly, rx, ry, l2, r2);
 }
 
 // Обработчик входящих BLE HID пакетов
 void notifyCallback(NimBLERemoteCharacteristic* pChar, uint8_t* pData, size_t length, bool isNotify) {
-  if (length == 0) return;
+  if (otaInProgress || length == 0) return;
   packetCounter++;
   lastHidInputMs = millis();
 
@@ -809,12 +817,19 @@ void notifyCallback(NimBLERemoteCharacteristic* pChar, uint8_t* pData, size_t le
     if (subChars[i].connHandle == connH && subChars[i].charHandle == cHandle) {
       devRole = subChars[i].devRole;
       if (subChars[i].layout.valid) matchedLay = &subChars[i].layout;
-      int8_t bIdx = subChars[i].bondIdx;
-      if (bIdx >= 0 && bIdx < savedCount) {
-        bondFmt   = savedBonds[bIdx].fmt;
-        bondScale = savedBonds[bIdx].scale;
-      }
       break;
+    }
+  }
+
+  // Надёжный поиск профиля по прямому peer MAC адресу (устойчив к сдвигам индексов массивов)
+  if (pChar->getClient()) {
+    String peerMac = pChar->getClient()->getPeerAddress().toString().c_str();
+    for (int b = 0; b < savedCount; b++) {
+      if (savedBonds[b].mac.equalsIgnoreCase(peerMac)) {
+        bondFmt   = savedBonds[b].fmt;
+        bondScale = savedBonds[b].scale;
+        break;
+      }
     }
   }
 
@@ -844,11 +859,6 @@ void notifyCallback(NimBLERemoteCharacteristic* pChar, uint8_t* pData, size_t le
 
   // 3) Автоматический роутинг по дескриптору 0x2A4B (ReportLayout)
   if (matchedLay) {
-    uint16_t expBytes = (matchedLay->bitOffset + 7) / 8;
-    if (length == expBytes + 1 && pData[0] == matchedLay->reportId) {
-      pData++;
-      length--;
-    }
     if (matchedLay->kind == KIND_GAMEPAD) {
       processGamepadReport(pData, length, 0, bondScale);
       return;
@@ -915,6 +925,35 @@ class ScanCallbacks: public NimBLEScanCallbacks {
   }
 };
 
+class BridgeClientCallbacks : public NimBLEClientCallbacks {
+  void onConnect(NimBLEClient* pClient) override {}
+
+  void onDisconnect(NimBLEClient* pClient, int reason) override {
+    NimBLEAddress addr = pClient->getPeerAddress();
+    String mac = addr.toString().c_str();
+    String name = "BLE HID";
+    for (int i = 0; i < savedCount; i++) {
+      if (savedBonds[i].mac.equalsIgnoreCase(mac)) {
+        savedBonds[i].connected = false;
+        name = savedBonds[i].name;
+        break;
+      }
+    }
+    uint16_t connH = pClient->getConnHandle();
+    for (int i = 0; i < subCharCount; ) {
+      if (subChars[i].connHandle == connH) {
+        subChars[i] = subChars[--subCharCount];
+      } else {
+        i++;
+      }
+    }
+    triggerLedEvent(LED_EV_DISCONNECTED);
+    CONSOLE.printf("{\"ev\":\"disconnected\",\"mac\":\"%s\",\"name\":\"%s\"}\n", mac.c_str(), name.c_str());
+    sendStatusJson();
+  }
+};
+static BridgeClientCallbacks clientCallbacks;
+
 bool connectToBleDevice(const String& mac, uint8_t addrType, const String& name, bool reportFailure = true) {
   NimBLEDevice::getScan()->stop();
   isScanning = false;
@@ -924,6 +963,13 @@ bool connectToBleDevice(const String& mac, uint8_t addrType, const String& name,
   if (!pClient) {
     pClient = NimBLEDevice::createClient();
   }
+  if (!pClient) {
+    if (reportFailure) {
+      CONSOLE.printf("{\"ev\":\"err\",\"msg\":\"Не удалось создать BLE клиент (исчерпан лимит подключений)\"}\n");
+    }
+    return false;
+  }
+  pClient->setClientCallbacks(&clientCallbacks, false);
 
   pClient->setConnectionParams(6, 12, 0, 400);
   pClient->setConnectTimeout(2500);
@@ -1202,6 +1248,11 @@ void handleSerialCommand(const String& line) {
     String fMac = extractJsonStr(line, "mac");
     for (int i = 0; i < savedCount; i++) {
       if (savedBonds[i].mac.equalsIgnoreCase(fMac)) {
+        NimBLEAddress addr(savedBonds[i].mac.c_str(), savedBonds[i].addrType);
+        NimBLEClient* pCli = NimBLEDevice::getClientByPeerAddress(addr);
+        if (pCli && pCli->isConnected()) {
+          pCli->disconnect();
+        }
         for (int j = i; j < savedCount - 1; j++) savedBonds[j] = savedBonds[j + 1];
         savedCount--;
         saveBondsToNVS();
@@ -1210,8 +1261,16 @@ void handleSerialCommand(const String& line) {
     }
     sendStatusJson();
   } else if (line.indexOf("\"cmd\":\"forget_all\"") >= 0) {
+    for (int i = 0; i < savedCount; i++) {
+      NimBLEAddress addr(savedBonds[i].mac.c_str(), savedBonds[i].addrType);
+      NimBLEClient* pCli = NimBLEDevice::getClientByPeerAddress(addr);
+      if (pCli && pCli->isConnected()) {
+        pCli->disconnect();
+      }
+    }
     NimBLEDevice::deleteAllBonds();
     savedCount = 0;
+    subCharCount = 0;
     saveBondsToNVS();
     sendStatusJson();
   } else if (line.indexOf("\"cmd\":\"set_config\"") >= 0) {
@@ -1222,6 +1281,7 @@ void handleSerialCommand(const String& line) {
     cfg.invertXY      = extractJsonInt(line, "invXY", 0) == 1;
     cfg.swapWinAlt    = extractJsonInt(line, "swapWA", 0) == 1;
     cfg.bootProtocol  = extractJsonInt(line, "bootP", 0) == 1;
+    cfg.autoReconnect = extractJsonInt(line, "autoRec", cfg.autoReconnect ? 1 : 0) == 1;
     cfg.ledMode       = extractJsonInt(line, "ledM", cfg.ledMode);
     cfg.ledPin        = WS2812_PIN;
     cfg.ledType       = 1;
@@ -1236,6 +1296,12 @@ void handleSerialCommand(const String& line) {
   } else if (line.indexOf("\"cmd\":\"ota_begin\"") >= 0) {
     NimBLEDevice::getScan()->stop();
     isScanning = false;
+    // Отключаем активные BLE соединения перед записью flash
+    for (int i = 0; i < savedCount; i++) {
+      NimBLEAddress addr(savedBonds[i].mac.c_str(), savedBonds[i].addrType);
+      NimBLEClient* pCli = NimBLEDevice::getClientByPeerAddress(addr);
+      if (pCli && pCli->isConnected()) pCli->disconnect();
+    }
     otaTotalSize = (size_t)extractJsonInt(line, "size", 0);
     if (otaTotalSize == 0 || otaTotalSize > ESP.getFreeSketchSpace()) {
       CONSOLE.printf("{\"ev\":\"ota_err\",\"msg\":\"Недопустимый размер OTA: %u байт\"}\n", (unsigned int)otaTotalSize);
@@ -1255,7 +1321,7 @@ void handleSerialCommand(const String& line) {
     if (!otaInProgress) return;
     String b64 = extractJsonStr(line, "d");
     static uint8_t binBuf[800];
-    size_t decLen = decodeBase64(b64.c_str(), b64.length(), binBuf);
+    size_t decLen = decodeBase64(b64.c_str(), b64.length(), binBuf, sizeof(binBuf));
     if (decLen > 0) {
       size_t w = Update.write(binBuf, decLen);
       if (w != decLen) {
@@ -1335,7 +1401,11 @@ void loop() {
       if (serialBuffer.length() > 0) handleSerialCommand(serialBuffer);
       serialBuffer = "";
     } else {
-      serialBuffer += c;
+      if (serialBuffer.length() < 2048) {
+        serialBuffer += c;
+      } else {
+        serialBuffer = "";
+      }
     }
   }
 
@@ -1344,7 +1414,7 @@ void loop() {
     connectToBleDevice(targetConnectMac, targetConnectType, targetConnectName);
   }
 
-  if (cfg.autoReconnect && !NimBLEDevice::getScan()->isScanning() &&
+  if (cfg.autoReconnect && !otaInProgress && !NimBLEDevice::getScan()->isScanning() &&
       millis() - lastReconnectTry > 8000 && millis() - lastHidInputMs > 1500 && savedCount > 0) {
     lastReconnectTry = millis();
     for (int n = 0; n < savedCount; n++) {
@@ -1352,11 +1422,13 @@ void loop() {
       NimBLEAddress addr(savedBonds[i].mac.c_str(), savedBonds[i].addrType);
       NimBLEClient* pCli = NimBLEDevice::getClientByPeerAddress(addr);
       bool isConn = (pCli && pCli->isConnected());
-      savedBonds[i].connected = isConn;
       if (!isConn) {
+        savedBonds[i].connected = false;
         reconnectCursor = (i + 1) % savedCount;
         connectToBleDevice(savedBonds[i].mac, savedBonds[i].addrType, savedBonds[i].name, false);
         break;
+      } else {
+        savedBonds[i].connected = true;
       }
     }
   }
