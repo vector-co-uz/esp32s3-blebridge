@@ -951,7 +951,7 @@ class BridgeClientCallbacks : public NimBLEClientCallbacks {
       }
     }
     triggerLedEvent(LED_EV_DISCONNECTED);
-    CONSOLE.printf("{\"ev\":\"disconnected\",\"mac\":\"%s\",\"name\":\"%s\"}\n", mac.c_str(), name.c_str());
+    CONSOLE.printf("{\"ev\":\"disconnected\",\"name\":\"%s\"}\n", name.c_str());
     sendStatusJson();
   }
 };
@@ -960,6 +960,14 @@ static BridgeClientCallbacks clientCallbacks;
 bool connectToBleDevice(const String& mac, uint8_t addrType, const String& name, bool reportFailure = true) {
   NimBLEDevice::getScan()->stop();
   isScanning = false;
+
+  bool isNewBond = true;
+  for (int i = 0; i < savedCount; i++) {
+    if (savedBonds[i].mac.equalsIgnoreCase(mac)) {
+      isNewBond = false;
+      break;
+    }
+  }
 
   NimBLEAddress addr(mac.c_str(), addrType);
   NimBLEClient* pClient = NimBLEDevice::getClientByPeerAddress(addr);
@@ -978,7 +986,7 @@ bool connectToBleDevice(const String& mac, uint8_t addrType, const String& name,
   pClient->setConnectTimeout(2500);
   if (!pClient->connect(addr)) {
     if (reportFailure) {
-      CONSOLE.printf("{\"ev\":\"err\",\"msg\":\"Не удалось подключиться к %s\"}\n", mac.c_str());
+      CONSOLE.printf("{\"ev\":\"err\",\"msg\":\"Не удалось подключиться к %s\"}\n", name.c_str());
     }
     return false;
   }
@@ -989,7 +997,7 @@ bool connectToBleDevice(const String& mac, uint8_t addrType, const String& name,
   NimBLERemoteService* pService = pClient->getService(hidServiceUUID);
   if (!pService) {
     if (reportFailure) {
-      CONSOLE.printf("{\"ev\":\"err\",\"msg\":\"Служба HID 0x1812 не найдена на %s\"}\n", mac.c_str());
+      CONSOLE.printf("{\"ev\":\"err\",\"msg\":\"Служба HID 0x1812 не найдена на %s\"}\n", name.c_str());
     }
     pClient->disconnect();
     return false;
@@ -1013,10 +1021,6 @@ bool connectToBleDevice(const String& mac, uint8_t addrType, const String& name,
         if (parsedLayouts[i].kind == KIND_GAMEPAD) detectedDeviceRole = KIND_GAMEPAD;
         else if (parsedLayouts[i].kind == KIND_MOUSE && detectedDeviceRole != KIND_GAMEPAD) detectedDeviceRole = KIND_MOUSE;
         else if (parsedLayouts[i].kind == KIND_KEYBOARD && detectedDeviceRole == 0) detectedDeviceRole = KIND_KEYBOARD;
-
-        CONSOLE.printf("{\"ev\":\"rmap\",\"id\":%d,\"kind\":%d,\"bits\":%d,\"xSz\":%d,\"ySz\":%d,\"keyOff\":%d,\"bmp\":%d}\n",
-                       parsedLayouts[i].reportId, parsedLayouts[i].kind, parsedLayouts[i].bitOffset,
-                       parsedLayouts[i].xSz, parsedLayouts[i].ySz, parsedLayouts[i].keyByteOff, parsedLayouts[i].hasBitmap ? 1 : 0);
       }
     }
   }
@@ -1122,7 +1126,11 @@ bool connectToBleDevice(const String& mac, uint8_t addrType, const String& name,
   }
 
   triggerLedEvent(LED_EV_CONNECTED);
-  CONSOLE.printf("{\"ev\":\"connected\",\"mac\":\"%s\",\"subs\":%d}\n", mac.c_str(), subCount);
+  if (isNewBond) {
+    CONSOLE.printf("{\"ev\":\"connected\",\"name\":\"%s\",\"mac\":\"%s\"}\n", name.c_str(), mac.c_str());
+  } else {
+    CONSOLE.printf("{\"ev\":\"connected\",\"name\":\"%s\"}\n", name.c_str());
+  }
   sendStatusJson();
   return true;
 }
@@ -1157,8 +1165,8 @@ void updateLedEngine() {
       if (savedBonds[i].connected && !isConn) {
         savedBonds[i].connected = false;
         triggerLedEvent(LED_EV_DISCONNECTED);
-        CONSOLE.printf("{\"ev\":\"disconnected\",\"mac\":\"%s\",\"name\":\"%s\"}\n",
-                       savedBonds[i].mac.c_str(), savedBonds[i].name.c_str());
+        CONSOLE.printf("{\"ev\":\"disconnected\",\"name\":\"%s\"}\n",
+                       savedBonds[i].name.c_str());
         sendStatusJson();
       }
     }
@@ -1438,10 +1446,5 @@ void loop() {
   }
 
   updateLedEngine();
-
-  if (millis() - lastStatusPush > 2000) {
-    lastStatusPush = millis();
-    sendStatusJson();
-  }
   delay(5);
 }

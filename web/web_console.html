@@ -75,7 +75,7 @@
         <div>
           <div class="flex items-center gap-2">
             <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">ESP32-S3 HID Dongle Console</h1>
-            <span id="firmwareVersionBadge" class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">FW: 0.7.4</span>
+            <span id="firmwareVersionBadge" class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">FW: 0.7.5</span>
           </div>
           <p class="text-xs text-slate-400">Мост BLE Клавиатура/Мышь → Проводной USB HID</p>
         </div>
@@ -1185,7 +1185,9 @@
     // ==================== WEBSERIAL COMMUNICATION ====================
     async function sendJsonCommand(obj) {
       const raw = JSON.stringify(obj);
-      appendLog(raw, 'tx');
+      if (obj.cmd !== 'status' && obj.cmd !== 'ota_chunk') {
+        appendLog(raw, 'tx');
+      }
 
       if (state.connectedUsb && state.writer) {
         try {
@@ -1205,7 +1207,6 @@
     }
 
     function handleIncomingSerialLine(line) {
-      appendLog(line, 'rx');
       try {
         const msg = JSON.parse(line);
         if (msg.ev === 'status' || msg.ev === 'scan') {
@@ -1230,7 +1231,7 @@
           }
           if (Array.isArray(msg.bonds)) {
             state.pairedDevices = msg.bonds;
-            // Не пересоздаём открытый select при очередном статусе (он приходит каждые 2 секунды).
+            // Не пересоздаём открытый select при очередном статусе
             if (!isEditingPairedDevice()) renderPairedDevices();
           }
           renderTopStatus();
@@ -1246,50 +1247,53 @@
           state.scanning = false;
           document.getElementById('scanSpinner').classList.add('hidden');
           document.getElementById('scanBtnText').textContent = 'Сканировать (10 с)';
+          appendLog('Сканирование радиоэфира завершено', 'sys');
           renderTopStatus();
           renderScanResults();
         } else if (msg.ev === 'connected') {
-          showToast(`Устройство ${msg.mac} подключено (LED: 3 зелёные вспышки)`, 'ok');
+          const title = msg.mac ? `${msg.name || 'Устройство'} (${msg.mac})` : (msg.name || 'Устройство');
+          appendLog(`[+] Подключено: ${title}`, 'rx');
+          showToast(`Подключено: ${title}`, 'ok');
         } else if (msg.ev === 'disconnected') {
-          showToast(`Устройство ${msg.name || msg.mac} отключилось (LED: 5 красных вспышек)`, 'warn');
-        } else if (msg.ev === 'hid_kb') {
-          state.packetCount++;
-          state.lastInputDesc = `Клавиша 0x${(msg.k0 || 0).toString(16).toUpperCase()}`;
-          updateHidInspectorKb(msg.mod || 0, msg.k0 || 0, msg.k1 || 0);
-          renderTopStatus();
-        } else if (msg.ev === 'hid_ms') {
-          state.packetCount++;
-          state.lastInputDesc = `Мышь ΔX:${msg.x} ΔY:${msg.y}`;
-          updateHidInspectorMouse(msg.btn || 0, msg.x || 0, msg.y || 0, msg.w || 0);
-          renderTopStatus();
-        } else if (msg.ev === 'hid_gp') {
-          state.packetCount++;
-          state.lastInputDesc = `Stadia LX:${msg.lx} LY:${msg.ly} R2:${msg.r2}`;
-          updateHidInspectorGamepad(msg);
-          renderTopStatus();
+          const title = msg.name || 'Устройство';
+          appendLog(`[-] Отключено: ${title}`, 'rx');
+          showToast(`Отключено: ${title}`, 'warn');
         } else if (msg.ev === 'cfg_saved') {
+          appendLog('Настройки сохранены в NVS Flash', 'sys');
           showToast('Настройки сохранены в NVS память стика!', 'ok');
         } else if (msg.ev === 'ota_ready') {
+          appendLog('OTA Flash готов к приёму блоков', 'sys');
           if (state.otaAckResolver) state.otaAckResolver({ ok: true, ready: true });
         } else if (msg.ev === 'ota_preparing') {
+          appendLog('Подготовка OTA-раздела...', 'sys');
           const otaLabel = document.getElementById('otaStateLabel');
           if (otaLabel) otaLabel.textContent = 'Подготовка и очистка OTA-раздела...';
         } else if (msg.ev === 'ota_ack') {
           if (state.otaAckResolver) state.otaAckResolver({ ok: true, written: msg.w });
         } else if (msg.ev === 'ota_done') {
+          appendLog('Прошивка успешно установлена! Перезагрузка ESP32-S3...', 'sys');
           if (state.otaAckResolver) state.otaAckResolver({ ok: true, done: true });
           showToast('Прошивка успешно установлена! Перезагрузка ESP32-S3...', 'ok');
         } else if (msg.ev === 'ota_err') {
           const otaError = (!msg.msg || msg.msg === 'No Error')
-            ? 'Ошибка записи Flash без кода от старой версии прошивки'
+            ? 'Ошибка записи Flash'
             : msg.msg;
+          appendLog(`[OTA Ошибка] ${otaError}`, 'sys');
           if (state.otaAckResolver) state.otaAckResolver({ ok: false, msg: otaError });
           showToast('Ошибка OTA: ' + otaError, 'err');
         } else if (msg.ev === 'err') {
+          appendLog(`[Ошибка] ${msg.msg}`, 'sys');
           showToast(msg.msg || 'Ошибка BLE операции', 'err');
+        } else if (msg.ev === 'rebooting') {
+          appendLog('Перезагрузка ESP32-S3...', 'sys');
+        } else if (msg.ev === 'bootloader') {
+          appendLog('Переход в режим ROM Bootloader...', 'sys');
+        } else {
+          appendLog(line, 'rx');
         }
       } catch (e) {
         // Non-JSON log output
+        appendLog(line, 'rx');
       }
     }
 
