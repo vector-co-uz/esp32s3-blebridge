@@ -77,6 +77,7 @@ struct BridgeConfig {
   bool swapWinAlt = false;
   bool bootProtocol = false;
   bool autoReconnect = true;
+  uint8_t ledBright = 20; // яркость в процентах, 0..100
   uint8_t ledMode = 2;
   uint8_t ledPin = 21;
   uint8_t ledType = 1;    // WS2812 RGB на GPIO 21
@@ -249,9 +250,9 @@ void setLedHardware(bool on, uint8_t r, uint8_t g, uint8_t b) {
   if (cfg.ledMode == 0) {
     on = false; r = 0; g = 0; b = 0;
   }
-  uint8_t rr = on ? r : 0;
-  uint8_t gg = on ? g : 0;
-  uint8_t bb = on ? b : 0;
+  uint8_t rr = on ? (r * cfg.ledBright) / 100 : 0;
+  uint8_t gg = on ? (g * cfg.ledBright) / 100 : 0;
+  uint8_t bb = on ? (b * cfg.ledBright) / 100 : 0;
 
   if (on != lastLedPhysOn || rr != lastRgbR || gg != lastRgbG || bb != lastRgbB) {
     lastLedPhysOn = on;
@@ -467,6 +468,7 @@ void saveConfigToNVS() {
   prefs.putUChar("gpMode", cfg.gpMode);
   prefs.putUChar("gpFmt", cfg.gpFmt);
   prefs.putUChar("gpDz", cfg.gpDeadzone);
+  prefs.putUChar("ledB", cfg.ledBright);
   prefs.end();
 }
 
@@ -488,6 +490,7 @@ void loadConfigFromNVS() {
   cfg.gpMode        = prefs.getUChar("gpMode", 0);
   cfg.gpFmt         = prefs.getUChar("gpFmt", 0);
   cfg.gpDeadzone    = prefs.getUChar("gpDz", 10);
+  cfg.ledBright     = prefs.getUChar("ledB", 20);
 
   savedCount = prefs.getInt("bCount", 0);
   if (savedCount > MAX_BONDS) savedCount = MAX_BONDS;
@@ -1215,6 +1218,7 @@ void handleSerialCommand(const String& line) {
     saveBondsToNVS();
     sendStatusJson();
   } else if (line.indexOf("\"cmd\":\"set_config\"") >= 0) {
+    cfg.ledBright     = constrain(extractJsonInt(line, "ledB", cfg.ledBright), 0, 100);
     cfg.mouseScale10  = extractJsonInt(line, "mScale", cfg.mouseScale10);
     cfg.scrollScale   = extractJsonInt(line, "sScale", cfg.scrollScale);
     cfg.swapMouseBtns = extractJsonInt(line, "swapBtn", 0) == 1;
