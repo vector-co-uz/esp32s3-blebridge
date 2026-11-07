@@ -131,7 +131,11 @@ void initWiFiMode() {
   delay(100);
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false); // Отключаем энергосбережение для радиокоэксистенции с BLE
-  WiFi.begin(cfg.wifiSsid, cfg.wifiPass);
+  if (strlen(cfg.wifiPass) > 0) {
+    WiFi.begin(cfg.wifiSsid, cfg.wifiPass);
+  } else {
+    WiFi.begin(cfg.wifiSsid);
+  }
 
   uint32_t t = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t < 12000) {
@@ -172,6 +176,32 @@ void checkWiFiConnection() {
     wifiConnected = true;
     udpHid.begin(0);
     CONSOLE.printf("{\"ev\":\"wifi_connected\",\"ip\":\"%s\"}\n", WiFi.localIP().toString().c_str());
+  }
+}
+
+// Сканирование доступных 2.4 ГГц WiFi сетей
+void scanWifiNetworks() {
+  CONSOLE.println("{\"ev\":\"wifi_scan_begin\"}");
+  bool scanWasRunning = false;
+  if (NimBLEDevice::getScan()) {
+    scanWasRunning = NimBLEDevice::getScan()->isScanning();
+    if (scanWasRunning) NimBLEDevice::getScan()->stop();
+  }
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(100);
+  int n = WiFi.scanNetworks(false, false, false, 250);
+  if (n <= 0) {
+    CONSOLE.println("{\"ev\":\"wifi_scan_end\",\"count\":0}");
+  } else {
+    for (int i = 0; i < n; ++i) {
+      CONSOLE.printf("{\"ev\":\"wifi_net\",\"ssid\":\"%s\",\"rssi\":%d,\"ch\":%d}\n",
+                     WiFi.SSID(i).c_str(), WiFi.RSSI(i), WiFi.channel(i));
+    }
+    CONSOLE.printf("{\"ev\":\"wifi_scan_end\",\"count\":%d}\n", n);
+  }
+  if (scanWasRunning && NimBLEDevice::getScan()) {
+    NimBLEDevice::getScan()->start(10000, false, true);
   }
 }
 
@@ -1503,6 +1533,8 @@ void handleSerialCommand(const String& line) {
       CONSOLE.println("{\"ev\":\"wifi_disconnected\"}");
     }
     sendStatusJson();
+  } else if (line.indexOf("\"cmd\":\"wifi_scan\"") >= 0) {
+    scanWifiNetworks();
   } else if (line.indexOf("\"cmd\":\"ota_begin\"") >= 0) {
     NimBLEDevice::getScan()->stop();
     isScanning = false;

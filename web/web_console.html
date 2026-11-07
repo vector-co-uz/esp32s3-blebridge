@@ -579,8 +579,19 @@
         <!-- WiFi Credentials -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div class="space-y-1.5">
-            <label for="inpWifiSsid" class="block text-xs font-medium text-violet-300">SSID (имя WiFi сети)</label>
-            <input id="inpWifiSsid" type="text" placeholder="HomeNetwork" maxlength="63" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-violet-500/40 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-400" />
+            <div class="flex items-center justify-between">
+              <label for="inpWifiSsid" class="block text-xs font-medium text-violet-300">SSID (имя WiFi сети 2.4 ГГц)</label>
+              <button id="btnScanWifi" type="button" class="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                Найти 2.4 ГГц сети
+              </button>
+            </div>
+            <div class="flex gap-2">
+              <input id="inpWifiSsid" type="text" placeholder="HomeNetwork" maxlength="63" class="flex-1 min-w-0 px-3 py-2 rounded-lg bg-slate-950 border border-violet-500/40 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-400" />
+              <select id="selWifiScanned" class="hidden w-44 px-2 py-2 rounded-lg bg-slate-950 border border-cyan-500/40 text-xs text-slate-100 focus:outline-none focus:border-cyan-400">
+                <option value="">Выберите сеть...</option>
+              </select>
+            </div>
           </div>
           <div class="space-y-1.5">
             <label for="inpWifiPass" class="block text-xs font-medium text-slate-300">Пароль WiFi</label>
@@ -1380,6 +1391,29 @@
           const badge = document.getElementById('wifiStatusBadge');
           if (badge) { badge.textContent = 'WiFi: отключен'; badge.classList.remove('hidden'); }
           appendLog('[WiFi] Соединение разорвано', 'sys');
+        } else if (msg.ev === 'wifi_scan_begin') {
+          appendLog('[WiFi] Сканирование 2.4 ГГц сетей...', 'sys');
+          const sel = document.getElementById('selWifiScanned');
+          if (sel) {
+            sel.innerHTML = '<option value="">Поиск 2.4 ГГц...</option>';
+            sel.classList.remove('hidden');
+          }
+        } else if (msg.ev === 'wifi_net') {
+          const sel = document.getElementById('selWifiScanned');
+          if (sel && msg.ssid) {
+            const opt = document.createElement('option');
+            opt.value = msg.ssid;
+            opt.textContent = `${msg.ssid} (${msg.rssi} дБм)`;
+            sel.appendChild(opt);
+          }
+        } else if (msg.ev === 'wifi_scan_end') {
+          const sel = document.getElementById('selWifiScanned');
+          if (sel) {
+            if (sel.options.length > 1) sel.options[0].textContent = `Найдено сетей: ${msg.count}`;
+            else sel.options[0].textContent = 'Сети не найдены';
+          }
+          appendLog(`[WiFi] Найдено сетей 2.4 ГГц: ${msg.count}`, 'sys');
+          showToast(`Найдено 2.4 ГГц сетей: ${msg.count}`, 'ok');
         } else if (msg.ev === 'ota_ready') {
           appendLog('OTA Flash готов к приёму блоков', 'sys');
           if (state.otaAckResolver) state.otaAckResolver({ ok: true, ready: true });
@@ -1765,6 +1799,20 @@
         document.getElementById('chkWifiMode').checked = false;
         document.getElementById('inpModePin').value = '0';
         showToast('Настройки сброшены к значениям по умолчанию', 'ok');
+      });
+
+      // Scan WiFi Networks Button
+      document.getElementById('btnScanWifi').addEventListener('click', () => {
+        sendJsonCommand({ cmd: 'wifi_scan' });
+        showToast('Сканирование эфира 2.4 ГГц...', 'ok');
+      });
+
+      document.getElementById('selWifiScanned').addEventListener('change', (e) => {
+        if (e.target.value) {
+          document.getElementById('inpWifiSsid').value = e.target.value;
+          document.getElementById('inpWifiPass').focus();
+          showToast(`Выбрана сеть: ${e.target.value}`, 'ok');
+        }
       });
 
       // Save WiFi Configuration Button
