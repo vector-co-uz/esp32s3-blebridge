@@ -115,23 +115,44 @@ void sendUdpHid(uint8_t type, const uint8_t* payload, uint8_t payloadLen) {
 // Инициализация WiFi в режиме HID-over-UDP
 void initWiFiMode() {
   if (strlen(cfg.wifiSsid) == 0) {
-    CONSOLE.println("{\"ev\":\"err\",\"msg\":\"WiFi: SSID не задан. Настройте через web-консоль.\"}");
+    CONSOLE.println("{\"ev\":\"err\",\"msg\":\"WiFi: SSID не задан. Укажите имя сети в веб-консоли.\"}");
     return;
   }
   CONSOLE.printf("{\"ev\":\"wifi_connecting\",\"ssid\":\"%s\"}\n", cfg.wifiSsid);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(cfg.wifiSsid, cfg.wifiPass);
-  uint32_t t = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - t < 10000) {
-    delay(200);
+
+  // Приостанавливаем BLE-сканирование на время рукопожатия WPA (устраняет конфликт единого 2.4 ГГц радио)
+  bool scanWasRunning = false;
+  if (NimBLEDevice::getScan()) {
+    scanWasRunning = NimBLEDevice::getScan()->isScanning();
+    if (scanWasRunning) NimBLEDevice::getScan()->stop();
   }
-  if (WiFi.status() == WL_CONNECTED) {
+
+  WiFi.disconnect(true);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false); // Отключаем энергосбережение для радиокоэксистенции с BLE
+  WiFi.begin(cfg.wifiSsid, cfg.wifiPass);
+
+  uint32_t t = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t < 12000) {
+    delay(250);
+  }
+
+  wl_status_t st = WiFi.status();
+  if (st == WL_CONNECTED) {
     wifiConnected = true;
     udpHid.begin(0); // Любой локальный порт
     CONSOLE.printf("{\"ev\":\"wifi_connected\",\"ip\":\"%s\"}\n", WiFi.localIP().toString().c_str());
   } else {
     wifiConnected = false;
-    CONSOLE.println("{\"ev\":\"err\",\"msg\":\"WiFi: Не удалось подключиться к точке доступа\"}");
+    const char* reason = "Таймаут подключения к роутеру";
+    if (st == WL_NO_SSID_AVAIL) reason = "Точка доступа не найдена (проверьте 2.4 ГГц и имя SSID)";
+    else if (st == WL_CONNECT_FAILED) reason = "Ошибка авторизации (неверный пароль сети)";
+    CONSOLE.printf("{\"ev\":\"err\",\"msg\":\"WiFi сбой [%d]: %s\"}\n", (int)st, reason);
+  }
+
+  if (scanWasRunning && NimBLEDevice::getScan()) {
+    NimBLEDevice::getScan()->start(10000, false, true);
   }
 }
 
@@ -1474,9 +1495,9 @@ void handleSerialCommand(const String& line) {
     saveConfigToNVS();
     CONSOLE.println("{\"ev\":\"cfg_saved\"}");
 
-    if (cfg.wifiMode && !wasWifi) {
+    if (cfg.wifiMode) {
       initWiFiMode();
-    } else if (!cfg.wifiMode && wasWifi) {
+    } else if (wasWifi) {
       WiFi.disconnect(true);
       wifiConnected = false;
       CONSOLE.println("{\"ev\":\"wifi_disconnected\"}");
