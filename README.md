@@ -36,7 +36,6 @@ BLE-клавиатура / мышь / геймпад → ESP32-S3 → USB HID �
 ## Возможности
 
 - BLE-клавиатура и мышь → USB HID
-- Два режима вывода: **Wired USB HID** и **WiFi HID-over-UDP** (переключение тумблером или из веб-консоли)
 - экспериментальная поддержка Google Stadia Controller
 - сохранение до пяти BLE-устройств
 - автоматическое переподключение
@@ -44,46 +43,6 @@ BLE-клавиатура / мышь / геймпад → ESP32-S3 → USB HID �
 - индикация состояния через WS2812 на GPIO 21
 - браузерная WebSerial-консоль
 - обновление прошивки через USB OTA
-
-## Режимы работы: USB и WiFi
-
-Адаптер поддерживает два режима вывода:
-1. **USB Режим (по умолчанию)**: BLE ввод транслируется напрямую в проводной USB HID (клавиатура, мышь, геймпад). Подходит для BIOS, загрузчиков, ПК и серверов.
-2. **WiFi Режим (HID-over-UDP)**: BLE ввод отправляется по локальной сети через UDP на указанный IP-адрес компьютера. На целевом ПК работает скрипт-приёмник `client/hid_receiver.py`.
-
-### Аппаратный тумблер (Switch)
-Вы можете подключить физический тумблер к любому свободному GPIO пину (настраивается в веб-консоли, параметр `modePin`):
-- Пин подтянут к питанию (HIGH / разомкнут) → **USB режим**
-- Пин замкнут на GND (LOW) → **WiFi режим**
-
-### Запуск приёмника на ПК / сервере (WiFi режим)
-
-#### Windows (готовый .exe без установки Python):
-В папке `client` уже скомпилирован автономный `hid_receiver.exe` (размер 9 КБ, использует Win32 SendInput, не требует сторонних библиотек):
-```cmd
-client\hid_receiver.exe --port 4321
-```
-(или просто запустите `hid_receiver.exe` двойным кликом).
-
-#### Linux / Proxmox / Unraid / Raspberry Pi (нативный бинарник uinput):
-Для Linux написан клиент на C (`client/hid_receiver_linux.c`), регистрирующий виртуальные устройства прямо в ядре Linux через `/dev/uinput` (работает в TTY-консоли, без X11/Wayland и без Python):
-```bash
-cd client
-make
-sudo ./hid_receiver --port 4321
-```
-Для автозапуска в фоновом режиме на серверах доступен systemd-сервис:
-```bash
-sudo cp hid_receiver /usr/local/bin/
-sudo cp esp32-blebridge.service /etc/systemd/system/
-sudo systemctl enable --now esp32-blebridge
-```
-
-#### Python-клиент (кроссплатформенный альтернативный):
-```bash
-pip install pynput
-python client/hid_receiver.py --port 4321
-```
 
 ## Требования
 

@@ -75,9 +75,9 @@
         <div>
           <div class="flex items-center gap-2">
             <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">ESP32-S3 HID Dongle Console</h1>
-            <span id="firmwareVersionBadge" class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">FW: 0.8.0</span>
+            <span id="firmwareVersionBadge" class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">FW: 0.7.6</span>
           </div>
-          <p class="text-xs text-slate-400">Мост BLE Клавиатура/Мышь → Проводной USB HID / WiFi HID-over-UDP</p>
+          <p class="text-xs text-slate-400">Мост BLE Клавиатура/Мышь → Проводной USB HID</p>
         </div>
       </div>
 
@@ -543,97 +543,6 @@
         </div>
       </div>
 
-      <!-- WiFi HID-over-UDP Settings Card -->
-      <div class="rounded-xl bg-slate-900 border border-violet-500/30 p-5 space-y-4">
-        <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
-          <div class="flex items-center gap-2.5">
-            <div class="w-8 h-8 rounded-lg bg-violet-500/15 text-violet-400 flex items-center justify-center">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg>
-            </div>
-            <div>
-              <h3 class="text-sm font-semibold text-white">Режим передачи: USB HID или WiFi HID-over-UDP</h3>
-              <p class="text-xs text-slate-400">В WiFi режиме HID-события отправляются UDP-пакетами на ПК через локальную сеть</p>
-            </div>
-          </div>
-          <div id="wifiStatusBadge" class="hidden px-2.5 py-1 rounded-full text-[11px] font-medium bg-violet-500/15 text-violet-300 border border-violet-500/30">
-            WiFi: не подключен
-          </div>
-        </div>
-
-        <!-- Mode Toggle -->
-        <div class="flex items-center gap-4 p-3 rounded-xl bg-slate-950/70 border border-slate-800">
-          <div class="flex-1">
-            <div class="text-xs font-semibold text-white mb-0.5">Активный режим передачи HID</div>
-            <div class="text-[11px] text-slate-400">USB — прямое подключение к ПК; WiFi — через локальную сеть (нужен Python-клиент)</div>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="text-xs text-slate-400">USB</span>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input id="chkWifiMode" type="checkbox" class="sr-only peer" />
-              <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-500"></div>
-            </label>
-            <span class="text-xs text-violet-300">WiFi</span>
-          </div>
-        </div>
-
-        <!-- WiFi Credentials -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div class="space-y-1.5">
-            <div class="flex items-center justify-between">
-              <label for="inpWifiSsid" class="block text-xs font-medium text-violet-300">SSID (имя WiFi сети 2.4 ГГц)</label>
-              <button id="btnScanWifi" type="button" class="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 transition">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                Найти 2.4 ГГц сети
-              </button>
-            </div>
-            <div class="flex gap-2">
-              <input id="inpWifiSsid" type="text" placeholder="HomeNetwork" maxlength="63" class="flex-1 min-w-0 px-3 py-2 rounded-lg bg-slate-950 border border-violet-500/40 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-400" />
-              <select id="selWifiScanned" class="hidden w-44 px-2 py-2 rounded-lg bg-slate-950 border border-cyan-500/40 text-xs text-slate-100 focus:outline-none focus:border-cyan-400">
-                <option value="">Выберите сеть...</option>
-              </select>
-            </div>
-          </div>
-          <div class="space-y-1.5">
-            <label for="inpWifiPass" class="block text-xs font-medium text-slate-300">Пароль WiFi</label>
-            <input id="inpWifiPass" type="password" placeholder="••••••••" maxlength="63" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-400" />
-          </div>
-        </div>
-
-        <!-- Target IP & Port -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div class="space-y-1.5">
-            <label for="inpWifiTargetIp" class="block text-xs font-medium text-violet-300">IP адрес хоста (ПК с Python-клиентом)</label>
-            <input id="inpWifiTargetIp" type="text" placeholder="192.168.1.100" maxlength="19" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-violet-500/40 text-xs mono text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-400" />
-          </div>
-          <div class="space-y-1.5">
-            <label for="inpWifiTargetPort" class="block text-xs font-medium text-slate-300">UDP порт (по умолчанию 4321)</label>
-            <input id="inpWifiTargetPort" type="number" value="4321" min="1024" max="65535" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs mono text-slate-100 focus:outline-none focus:border-violet-400" />
-          </div>
-        </div>
-
-        <!-- Mode Pin -->
-        <div class="space-y-1.5">
-          <label for="inpModePin" class="block text-xs font-medium text-slate-300">GPIO тумблера (0 = не использовать, LOW=WiFi / HIGH=USB)</label>
-          <input id="inpModePin" type="number" value="0" min="0" max="48" class="w-32 px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs mono text-slate-100 focus:outline-none focus:border-violet-400" />
-          <p class="text-[11px] text-slate-400">Физический тумблер переключает режим при каждом включении устройства.</p>
-        </div>
-
-        <!-- Save WiFi button -->
-        <button id="btnSaveWifi" type="button" class="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs font-semibold text-white shadow-md shadow-violet-600/20 transition flex items-center gap-1.5">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-          Применить WiFi настройки
-        </button>
-
-        <!-- Info box -->
-        <div class="p-3 rounded-lg bg-slate-950/70 border border-slate-800 text-[11px] text-slate-400 space-y-1">
-          <div class="font-semibold text-slate-300">Как использовать WiFi режим:</div>
-          <div>1. Укажите SSID, пароль и IP вашего ПК выше → нажмите «Применить WiFi настройки»</div>
-          <div>2. Запустите на ПК: в Windows — <code class="text-emerald-300">client\hid_receiver.exe</code>; в Linux — <code class="text-emerald-300">sudo ./hid_receiver</code></div>
-          <div>3. Переключите тумблер в позицию WiFi (или включите переключатель выше)</div>
-          <div class="text-amber-300">⚠ BLE + WiFi работают через аппаратную коэксистенцию ESP32-S3.</div>
-        </div>
-      </div>
-
       <!-- Save / Reset Bar -->
       <div class="rounded-xl bg-slate-900 border border-slate-800 p-4 flex flex-wrap items-center justify-between gap-3">
         <div class="text-xs text-slate-400">
@@ -930,10 +839,7 @@
         autoReconnect: true,
         ledMode: '2',
         ledPin: 21
-      },
-      wifiMode: false,
-      wifiConnected: false,
-      wifiIp: ''
+      }
     };
 
     const DEMO_SCAN_POOL = [
@@ -1168,38 +1074,6 @@
         const el = document.getElementById('rngGpDeadzone');
         if (el) { el.value = cfg.gpDz; document.getElementById('lblGpDeadzone').textContent = String(cfg.gpDz); }
       }
-      if (cfg.wifiMode !== undefined) {
-        const el = document.getElementById('chkWifiMode');
-        if (el) el.checked = (cfg.wifiMode === 1 || cfg.wifiMode === true);
-      }
-      if (cfg.wSSID !== undefined) {
-        const el = document.getElementById('inpWifiSsid');
-        if (el && cfg.wSSID) el.value = cfg.wSSID;
-      }
-      if (cfg.wIP !== undefined) {
-        const el = document.getElementById('inpWifiTargetIp');
-        if (el && cfg.wIP) el.value = cfg.wIP;
-      }
-      if (cfg.wPort !== undefined) {
-        const el = document.getElementById('inpWifiTargetPort');
-        if (el) el.value = cfg.wPort;
-      }
-      if (cfg.modePin !== undefined) {
-        const el = document.getElementById('inpModePin');
-        if (el) el.value = cfg.modePin;
-      }
-      if (cfg.wifiOk !== undefined) {
-        const badge = document.getElementById('wifiStatusBadge');
-        if (badge) {
-          if (cfg.wifiOk) {
-            badge.textContent = 'WiFi: подключен';
-            badge.classList.remove('hidden');
-          } else if (cfg.wifiMode) {
-            badge.textContent = 'WiFi: не подключен';
-            badge.classList.remove('hidden');
-          }
-        }
-      }
     }
 
     function renderScanResults() {
@@ -1377,43 +1251,6 @@
         } else if (msg.ev === 'cfg_saved') {
           appendLog('Настройки сохранены в NVS Flash', 'sys');
           showToast('Настройки сохранены в NVS память стика!', 'ok');
-        } else if (msg.ev === 'wifi_connecting') {
-          appendLog(`[WiFi] Подключение к "${msg.ssid}"...`, 'sys');
-        } else if (msg.ev === 'wifi_connected') {
-          state.wifiConnected = true;
-          state.wifiIp = msg.ip || '';
-          const badge = document.getElementById('wifiStatusBadge');
-          if (badge) { badge.textContent = `WiFi: ${msg.ip}`; badge.classList.remove('hidden'); }
-          appendLog(`[WiFi] Подключен. IP: ${msg.ip}`, 'sys');
-          showToast(`WiFi подключен: ${msg.ip}`, 'ok');
-        } else if (msg.ev === 'wifi_disconnected') {
-          state.wifiConnected = false;
-          const badge = document.getElementById('wifiStatusBadge');
-          if (badge) { badge.textContent = 'WiFi: отключен'; badge.classList.remove('hidden'); }
-          appendLog('[WiFi] Соединение разорвано', 'sys');
-        } else if (msg.ev === 'wifi_scan_begin') {
-          appendLog('[WiFi] Сканирование 2.4 ГГц сетей...', 'sys');
-          const sel = document.getElementById('selWifiScanned');
-          if (sel) {
-            sel.innerHTML = '<option value="">Поиск 2.4 ГГц...</option>';
-            sel.classList.remove('hidden');
-          }
-        } else if (msg.ev === 'wifi_net') {
-          const sel = document.getElementById('selWifiScanned');
-          if (sel && msg.ssid) {
-            const opt = document.createElement('option');
-            opt.value = msg.ssid;
-            opt.textContent = `${msg.ssid} (${msg.rssi} дБм)`;
-            sel.appendChild(opt);
-          }
-        } else if (msg.ev === 'wifi_scan_end') {
-          const sel = document.getElementById('selWifiScanned');
-          if (sel) {
-            if (sel.options.length > 1) sel.options[0].textContent = `Найдено сетей: ${msg.count}`;
-            else sel.options[0].textContent = 'Сети не найдены';
-          }
-          appendLog(`[WiFi] Найдено сетей 2.4 ГГц: ${msg.count}`, 'sys');
-          showToast(`Найдено 2.4 ГГц сетей: ${msg.count}`, 'ok');
         } else if (msg.ev === 'ota_ready') {
           appendLog('OTA Flash готов к приёму блоков', 'sys');
           if (state.otaAckResolver) state.otaAckResolver({ ok: true, ready: true });
@@ -1605,15 +1442,6 @@
         showToast(`Профиль раскодировки для ${obj.mac} сохранён в NVS`, 'ok');
       } else if (obj.cmd === 'set_config') {
         handleIncomingSerialLine(JSON.stringify({ ev: 'cfg_saved' }));
-      } else if (obj.cmd === 'set_wifi') {
-        handleIncomingSerialLine(JSON.stringify({ ev: 'cfg_saved' }));
-        if (obj.wifiMode === 1) {
-          setTimeout(() => {
-            handleIncomingSerialLine(JSON.stringify({ ev: 'wifi_connected', ip: '192.168.1.100' }));
-          }, 1200);
-        } else {
-          handleIncomingSerialLine(JSON.stringify({ ev: 'wifi_disconnected' }));
-        }
       } else if (obj.cmd === 'reboot') {
         state.uptime = 0;
         showToast('ESP32-S3 перезагружен', 'ok');
@@ -1796,50 +1624,7 @@
         document.getElementById('selGpFmt').value = '0';
         document.getElementById('rngGpDeadzone').value = '10';
         document.getElementById('lblGpDeadzone').textContent = '10';
-        document.getElementById('chkWifiMode').checked = false;
-        document.getElementById('inpModePin').value = '0';
         showToast('Настройки сброшены к значениям по умолчанию', 'ok');
-      });
-
-      // Scan WiFi Networks Button
-      document.getElementById('btnScanWifi').addEventListener('click', () => {
-        sendJsonCommand({ cmd: 'wifi_scan' });
-        showToast('Сканирование эфира 2.4 ГГц...', 'ok');
-      });
-
-      document.getElementById('selWifiScanned').addEventListener('change', (e) => {
-        if (e.target.value) {
-          document.getElementById('inpWifiSsid').value = e.target.value;
-          document.getElementById('inpWifiPass').focus();
-          showToast(`Выбрана сеть: ${e.target.value}`, 'ok');
-        }
-      });
-
-      // Save WiFi Configuration Button
-      document.getElementById('btnSaveWifi').addEventListener('click', () => {
-        const ssid = document.getElementById('inpWifiSsid').value.trim();
-        const pass = document.getElementById('inpWifiPass').value;
-        const ip = document.getElementById('inpWifiTargetIp').value.trim();
-        const port = parseInt(document.getElementById('inpWifiTargetPort').value, 10) || 4321;
-        const wifiMode = document.getElementById('chkWifiMode').checked ? 1 : 0;
-        const modePin = parseInt(document.getElementById('inpModePin').value, 10) || 0;
-
-        if (wifiMode && !ssid) {
-          showToast('Укажите SSID WiFi сети!', 'err');
-          return;
-        }
-        if (wifiMode && !ip) {
-          showToast('Укажите IP адрес хоста (ПК)!', 'err');
-          return;
-        }
-
-        const payload = { cmd: 'set_wifi', wifiMode, modePin, port };
-        if (ssid) payload.ssid = ssid;
-        if (pass) payload.pass = pass;
-        if (ip) payload.ip = ip;
-
-        sendJsonCommand(payload);
-        showToast(wifiMode ? 'WiFi режим активирован — подключение...' : 'USB режим активирован', wifiMode ? 'ok' : 'warn');
       });
 
       // LED Hardware Test Buttons
