@@ -1,11 +1,12 @@
 /*
- * ESP32-S3 BLE HID Central -> Wired USB Composite HID Bridge (v0.7.3)
+ * ESP32-S3 BLE HID Central -> Wired USB Composite HID Bridge / WiFi HID Bridge (v0.8.0)
  * - Умная индикация LED / WS2812 RGB: Поиск (4 Гц), Нет девайсов (маячок 1.6 с), Подключение (3 вспышки + горит), Отключение (5 вспышек)
  * - Индивидуальный профиль раскодировки (fmt) и чувствительности (scale) для КАЖДОГО MAC-адреса в NVS
  * - Полная поддержка джойстика Google Stadia Controller (BLE режим: 10 байт, стики, триггеры L2/R2, 15 кнопок, D-Pad)
  * - Два режима джойстика: Нативный USBHIDGamepad ИЛИ аппаратная эмуляция Клавиатура + Мышь (WASD + Курсор)
  * - Автоматический парсер HID Report Map (0x2A4B) для 12/16-битных мышей и клавиатуры Logitech MX Keys Mini
  * - Обновление прошивки прямо из браузера по USB WebSerial OTA (Update.h)
+ * - Режим WiFi HID-over-UDP: BLE устройства -> UDP пакеты -> Python-клиент на ПК (переключение тумблером или из консоли)
  *
  * Настройки Arduino IDE -> Tools:
  * 1. Board: "ESP32S3 Dev Module"
@@ -21,9 +22,10 @@
 #include <NimBLEDevice.h>
 #include <Preferences.h>
 #include <Update.h>
+#include <WiFi.h>
+#include <WiFiUdp.h>
 #include "esp_ota_ops.h"
 #include "esp_system.h"
-#include "soc/rtc_cntl_reg.h"
 
 #if !ARDUINO_USB_MODE
   #if ARDUINO_USB_CDC_ON_BOOT
@@ -83,7 +85,74 @@ struct BridgeConfig {
   uint8_t gpMode = 0;     // 0=Нативный USB Gamepad, 1=Эмуляция Клавиатура(WASD) + Мышь
   uint8_t gpFmt = 0;      // 0=Google Stadia BLE (10 байт), 1=Generic BLE Gamepad
   uint8_t gpDeadzone = 10;
+  bool wifiMode = false;             // false=USB, true=WiFi HID-over-UDP
+  uint8_t modePin = 0;               // GPIO для тумблера (0 = не использовать, LOW=WiFi, HIGH=USB)
+  char wifiSsid[64] = "";            // SSID WiFi сети
+  char wifiPass[64] = "";            // Пароль WiFi
+  char wifiTargetIp[20] = "";        // IP хоста (куда слать UDP)
+  uint16_t wifiTargetPort = 4321;    // UDP порт хоста
 } cfg;
+
+// WiFi HID-over-UDP
+WiFiUDP udpHid;
+bool wifiConnected = false;
+uint32_t lastWifiCheck = 0;
+
+// Отправить HID-пакет по UDP в WiFi-режиме
+// Формат: [тип:1][данные:N]
+// Типы: 0x01=Клавиатура, 0x02=Мышь, 0x03=Consumer, 0x04=Gamepad
+void sendUdpHid(uint8_t type, const uint8_t* payload, uint8_t payloadLen) {
+  if (!wifiConnected || strlen(cfg.wifiTargetIp) == 0) return;
+  uint8_t pkt[64];
+  pkt[0] = type;
+  if (payloadLen > 63) payloadLen = 63;
+  memcpy(pkt + 1, payload, payloadLen);
+  udpHid.beginPacket(cfg.wifiTargetIp, cfg.wifiTargetPort);
+  udpHid.write(pkt, 1 + payloadLen);
+  udpHid.endPacket();
+}
+
+// Инициализация WiFi в режиме HID-over-UDP
+void initWiFiMode() {
+  if (strlen(cfg.wifiSsid) == 0) {
+    CONSOLE.println("{\"ev\":\"err\",\"msg\":\"WiFi: SSID не задан. Настройте через web-консоль.\"}");
+    return;
+  }
+  CONSOLE.printf("{\"ev\":\"wifi_connecting\",\"ssid\":\"%s\"}\n", cfg.wifiSsid);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(cfg.wifiSsid, cfg.wifiPass);
+  uint32_t t = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t < 10000) {
+    delay(200);
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiConnected = true;
+    udpHid.begin(0); // Любой локальный порт
+    CONSOLE.printf("{\"ev\":\"wifi_connected\",\"ip\":\"%s\"}\n", WiFi.localIP().toString().c_str());
+  } else {
+    wifiConnected = false;
+    CONSOLE.println("{\"ev\":\"err\",\"msg\":\"WiFi: Не удалось подключиться к точке доступа\"}");
+  }
+}
+
+// Проверка и автовосстановление WiFi соединения (каждые 5 с)
+void checkWiFiConnection() {
+  if (!cfg.wifiMode) return;
+  uint32_t now = millis();
+  if (now - lastWifiCheck < 5000) return;
+  lastWifiCheck = now;
+  if (WiFi.status() != WL_CONNECTED) {
+    if (wifiConnected) {
+      wifiConnected = false;
+      CONSOLE.println("{\"ev\":\"wifi_disconnected\"}");
+    }
+    WiFi.reconnect();
+  } else if (!wifiConnected) {
+    wifiConnected = true;
+    udpHid.begin(0);
+    CONSOLE.printf("{\"ev\":\"wifi_connected\",\"ip\":\"%s\"}\n", WiFi.localIP().toString().c_str());
+  }
+}
 
 enum ReportKind : uint8_t {
   KIND_UNKNOWN = 0,
@@ -468,6 +537,12 @@ void saveConfigToNVS() {
   prefs.putUChar("gpFmt", cfg.gpFmt);
   prefs.putUChar("gpDz", cfg.gpDeadzone);
   prefs.putUChar("ledB", cfg.ledBright);
+  prefs.putBool("wifiMode", cfg.wifiMode);
+  prefs.putUChar("modePin", cfg.modePin);
+  prefs.putString("wSSID", cfg.wifiSsid);
+  prefs.putString("wPass", cfg.wifiPass);
+  prefs.putString("wIP", cfg.wifiTargetIp);
+  prefs.putUShort("wPort", cfg.wifiTargetPort);
   prefs.end();
 }
 
@@ -490,6 +565,15 @@ void loadConfigFromNVS() {
   cfg.gpFmt         = prefs.getUChar("gpFmt", 0);
   cfg.gpDeadzone    = prefs.getUChar("gpDz", 10);
   cfg.ledBright     = prefs.getUChar("ledB", 20);
+  cfg.wifiMode      = prefs.getBool("wifiMode", false);
+  cfg.modePin       = prefs.getUChar("modePin", 0);
+  String ssid = prefs.getString("wSSID", "");
+  ssid.toCharArray(cfg.wifiSsid, sizeof(cfg.wifiSsid));
+  String pass = prefs.getString("wPass", "");
+  pass.toCharArray(cfg.wifiPass, sizeof(cfg.wifiPass));
+  String ip = prefs.getString("wIP", "");
+  ip.toCharArray(cfg.wifiTargetIp, sizeof(cfg.wifiTargetIp));
+  cfg.wifiTargetPort = prefs.getUShort("wPort", 4321);
 
   savedCount = prefs.getInt("bCount", 0);
   if (savedCount > MAX_BONDS) savedCount = MAX_BONDS;
@@ -540,7 +624,7 @@ void sendStatusJson() {
   if (otaInProgress) return;
   const esp_partition_t* running = esp_ota_get_running_partition();
   const char* partLabel = running ? running->label : "app0";
-  CONSOLE.print("{\"ev\":\"status\",\"ver\":\"0.7.3\",\"part\":\"");
+  CONSOLE.print("{\"ev\":\"status\",\"ver\":\"0.8.0\",\"part\":\"");
   CONSOLE.print(partLabel);
   CONSOLE.print("\",\"otaFree\":");
   CONSOLE.print(ESP.getFreeSketchSpace());
@@ -567,6 +651,12 @@ void sendStatusJson() {
   CONSOLE.print(",\"gpMode\":"); CONSOLE.print(cfg.gpMode);
   CONSOLE.print(",\"gpFmt\":"); CONSOLE.print(cfg.gpFmt);
   CONSOLE.print(",\"gpDz\":"); CONSOLE.print(cfg.gpDeadzone);
+  CONSOLE.print(",\"wifiMode\":"); CONSOLE.print(cfg.wifiMode ? 1 : 0);
+  CONSOLE.print(",\"modePin\":"); CONSOLE.print(cfg.modePin);
+  CONSOLE.print(",\"wSSID\":\""); CONSOLE.print(cfg.wifiSsid); CONSOLE.print("\"");
+  CONSOLE.print(",\"wIP\":\""); CONSOLE.print(cfg.wifiTargetIp); CONSOLE.print("\"");
+  CONSOLE.print(",\"wPort\":"); CONSOLE.print(cfg.wifiTargetPort);
+  CONSOLE.print(",\"wifiOk\":"); CONSOLE.print(wifiConnected ? 1 : 0);
   CONSOLE.print("},\"bonds\":[");
   for (int i = 0; i < savedCount; i++) {
     if (i > 0) CONSOLE.print(",");
@@ -631,7 +721,14 @@ void processKeyboardReport(const uint8_t* pData, size_t length, const ReportLayo
   }
 
   report.modifiers = mods;
-  Keyboard.sendReport(&report);
+  if (cfg.wifiMode) {
+    uint8_t pkt[8] = {report.modifiers, 0,
+      report.keys[0], report.keys[1], report.keys[2],
+      report.keys[3], report.keys[4], report.keys[5]};
+    sendUdpHid(0x01, pkt, 8);
+  } else {
+    Keyboard.sendReport(&report);
+  }
 }
 
 void processMouseReport(const uint8_t* pData, size_t length, const ReportLayout* lay, uint8_t overrideMouseFmt = 0, uint8_t overrideScale10 = 0) {
@@ -699,7 +796,12 @@ void processMouseReport(const uint8_t* pData, size_t length, const ReportLayout*
   int8_t wheel = (int8_t)constrain(rawW * cfg.scrollScale, -127, 127);
   int8_t pan = (int8_t)constrain(rawPan, -127, 127);
 
-  sendUsbMouse(buttons, x, y, wheel, pan);
+  if (cfg.wifiMode) {
+    int8_t pkt[5] = {(int8_t)buttons, x, y, wheel, pan};
+    sendUdpHid(0x02, (uint8_t*)pkt, 5);
+  } else {
+    sendUsbMouse(buttons, x, y, wheel, pan);
+  }
 }
 
 // Обработчик джойстика Google Stadia Controller (BLE Report 0x03) и универсальных BLE-геймпадов
@@ -757,16 +859,29 @@ void processGamepadReport(const uint8_t* pData, size_t length, uint8_t overrideG
   if (cfg.gpMode == 0) {
     // Режим 0: Нативный USB HID Геймпад (TinyUSB Gamepad)
     uint8_t usbHat = (rawHat <= 7) ? (rawHat + 1) : 0; // TinyUSB: 0=Center, 1=N .. 8=NW
-    Gamepad.send(
-      (int8_t)constrain(lx, -127, 127),
-      (int8_t)constrain(ly, -127, 127),
-      (int8_t)constrain(rx, -127, 127),
-      (int8_t)constrain(ry, -127, 127),
-      (int8_t)((int16_t)l2 - 128),
-      (int8_t)((int16_t)r2 - 128),
-      usbHat,
-      usbBtns
-    );
+    if (cfg.wifiMode) {
+      uint8_t pkt[10];
+      pkt[0] = (uint8_t)((int8_t)constrain(lx, -127, 127) + 128);
+      pkt[1] = (uint8_t)((int8_t)constrain(ly, -127, 127) + 128);
+      pkt[2] = (uint8_t)((int8_t)constrain(rx, -127, 127) + 128);
+      pkt[3] = (uint8_t)((int8_t)constrain(ry, -127, 127) + 128);
+      pkt[4] = l2; pkt[5] = r2; pkt[6] = usbHat;
+      pkt[7] = (uint8_t)(usbBtns & 0xFF);
+      pkt[8] = (uint8_t)((usbBtns >> 8) & 0xFF);
+      pkt[9] = (uint8_t)((usbBtns >> 16) & 0xFF);
+      sendUdpHid(0x04, pkt, 10);
+    } else {
+      Gamepad.send(
+        (int8_t)constrain(lx, -127, 127),
+        (int8_t)constrain(ly, -127, 127),
+        (int8_t)constrain(rx, -127, 127),
+        (int8_t)constrain(ry, -127, 127),
+        (int8_t)((int16_t)l2 - 128),
+        (int8_t)((int16_t)r2 - 128),
+        usbHat,
+        usbBtns
+      );
+    }
   } else {
     // Режим 1: Аппаратная эмуляция Клавиатура (WASD) + Мышь (Правый стик + L2/R2)
     KeyReport kRpt = {0, 0, {0, 0, 0, 0, 0, 0}};
@@ -787,7 +902,14 @@ void processGamepadReport(const uint8_t* pData, size_t length, uint8_t overrideG
     if (usbBtns & (1UL << 8)) pushKey(0x29); // Options -> Esc
     if (usbBtns & (1UL << 10)) kRpt.modifiers |= 0x02; // L3 -> Left Shift (Бег)
 
-    Keyboard.sendReport(&kRpt);
+    if (cfg.wifiMode) {
+      uint8_t pkt[8] = {kRpt.modifiers, 0,
+        kRpt.keys[0], kRpt.keys[1], kRpt.keys[2],
+        kRpt.keys[3], kRpt.keys[4], kRpt.keys[5]};
+      sendUdpHid(0x01, pkt, 8);
+    } else {
+      Keyboard.sendReport(&kRpt);
+    }
 
     // Правый стик -> Курсор мыши; R2/R1 -> ЛКМ; L2/L1 -> ПКМ
     uint8_t mBtns = 0;
@@ -797,7 +919,12 @@ void processGamepadReport(const uint8_t* pData, size_t length, uint8_t overrideG
 
     int8_t mx = (int8_t)constrain((rx * scale10) / 80, -127, 127);
     int8_t my = (int8_t)constrain((ry * scale10) / 80, -127, 127);
-    sendUsbMouse(mBtns, mx, my, 0, 0);
+    if (cfg.wifiMode) {
+      int8_t pkt[5] = {(int8_t)mBtns, mx, my, 0, 0};
+      sendUdpHid(0x02, (uint8_t*)pkt, 5);
+    } else {
+      sendUsbMouse(mBtns, mx, my, 0, 0);
+    }
   }
 }
 
@@ -873,8 +1000,13 @@ void notifyCallback(NimBLERemoteCharacteristic* pChar, uint8_t* pData, size_t le
       return;
     } else if (matchedLay->kind == KIND_CONSUMER && length >= 2) {
       uint16_t mediaCode = pData[0] | (pData[1] << 8);
-      if (mediaCode != 0) ConsumerControl.press(mediaCode);
-      else ConsumerControl.release();
+      if (cfg.wifiMode) {
+        uint8_t pkt[2] = {(uint8_t)(mediaCode & 0xFF), (uint8_t)(mediaCode >> 8)};
+        sendUdpHid(0x03, pkt, 2);
+      } else {
+        if (mediaCode != 0) ConsumerControl.press(mediaCode);
+        else ConsumerControl.release();
+      }
       return;
     } else if (matchedLay->kind == KIND_VENDOR) {
       return;
@@ -889,8 +1021,13 @@ void notifyCallback(NimBLERemoteCharacteristic* pChar, uint8_t* pData, size_t le
   } else if (devRole == KIND_KEYBOARD) {
     if (length == 2) {
       uint16_t mediaCode = pData[0] | (pData[1] << 8);
-      if (mediaCode != 0) ConsumerControl.press(mediaCode);
-      else ConsumerControl.release();
+      if (cfg.wifiMode) {
+        uint8_t pkt[2] = {(uint8_t)(mediaCode & 0xFF), (uint8_t)(mediaCode >> 8)};
+        sendUdpHid(0x03, pkt, 2);
+      } else {
+        if (mediaCode != 0) ConsumerControl.press(mediaCode);
+        else ConsumerControl.release();
+      }
     } else if (length >= 7) {
       processKeyboardReport(pData, length, nullptr, 0);
     }
@@ -1255,6 +1392,19 @@ void handleSerialCommand(const String& line) {
     int ev = extractJsonInt(line, "ev", 1);
     triggerLedEvent((uint8_t)ev);
     CONSOLE.printf("{\"ev\":\"led_tested\",\"mode\":%d}\n", ev);
+  } else if (line.indexOf("\"cmd\":\"test_hid\"") >= 0) {
+    if (cfg.wifiMode) {
+      int8_t pkt[5] = {0, 15, 15, 0, 0};
+      sendUdpHid(0x02, (uint8_t*)pkt, 5);
+      delay(40);
+      int8_t pkt2[5] = {0, -15, -15, 0, 0};
+      sendUdpHid(0x02, (uint8_t*)pkt2, 5);
+    } else {
+      sendUsbMouse(0, 15, 15, 0, 0);
+      delay(40);
+      sendUsbMouse(0, -15, -15, 0, 0);
+    }
+    CONSOLE.println("{\"ev\":\"test_hid_sent\"}");
   } else if (line.indexOf("\"cmd\":\"forget\"") >= 0) {
     String fMac = extractJsonStr(line, "mac");
     for (int i = 0; i < savedCount; i++) {
@@ -1305,6 +1455,33 @@ void handleSerialCommand(const String& line) {
     cfg.gpDeadzone    = extractJsonInt(line, "gpDz", cfg.gpDeadzone);
     saveConfigToNVS();
     CONSOLE.println("{\"ev\":\"cfg_saved\"}");
+  } else if (line.indexOf("\"cmd\":\"set_wifi\"") >= 0) {
+    String ssid = extractJsonStr(line, "ssid");
+    String pass = extractJsonStr(line, "pass");
+    String ip   = extractJsonStr(line, "ip");
+    int port    = extractJsonInt(line, "port", cfg.wifiTargetPort);
+    int mode    = extractJsonInt(line, "wifiMode", cfg.wifiMode ? 1 : 0);
+    int pin     = extractJsonInt(line, "modePin", cfg.modePin);
+
+    if (ssid.length() > 0) ssid.toCharArray(cfg.wifiSsid, sizeof(cfg.wifiSsid));
+    if (pass.length() > 0) pass.toCharArray(cfg.wifiPass, sizeof(cfg.wifiPass));
+    if (ip.length() > 0) ip.toCharArray(cfg.wifiTargetIp, sizeof(cfg.wifiTargetIp));
+    cfg.wifiTargetPort = (uint16_t)port;
+    cfg.modePin = (uint8_t)pin;
+
+    bool wasWifi = cfg.wifiMode;
+    cfg.wifiMode = (mode == 1);
+    saveConfigToNVS();
+    CONSOLE.println("{\"ev\":\"cfg_saved\"}");
+
+    if (cfg.wifiMode && !wasWifi) {
+      initWiFiMode();
+    } else if (!cfg.wifiMode && wasWifi) {
+      WiFi.disconnect(true);
+      wifiConnected = false;
+      CONSOLE.println("{\"ev\":\"wifi_disconnected\"}");
+    }
+    sendStatusJson();
   } else if (line.indexOf("\"cmd\":\"ota_begin\"") >= 0) {
     NimBLEDevice::getScan()->stop();
     isScanning = false;
@@ -1370,17 +1547,22 @@ void handleSerialCommand(const String& line) {
     CONSOLE.println("{\"ev\":\"rebooting\"}");
     delay(200);
     esp_restart();
-  } else if (line.indexOf("\"cmd\":\"bootloader\"") >= 0) {
-    CONSOLE.println("{\"ev\":\"bootloader\"}");
-    delay(200);
-    REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
-    esp_restart();
   }
 }
 
 void setup() {
   CONSOLE.begin(115200);
   loadConfigFromNVS();
+
+  // Определение режима по GPIO-тумблеру (если задан)
+  if (cfg.modePin > 0) {
+    pinMode(cfg.modePin, INPUT_PULLUP);
+    delay(10);
+    bool pinLow = (digitalRead(cfg.modePin) == LOW);
+    if (pinLow != cfg.wifiMode) {
+      cfg.wifiMode = pinLow;  // LOW = WiFi режим, HIGH = USB режим
+    }
+  }
 
   pinMode(cfg.ledPin, OUTPUT);
   digitalWrite(cfg.ledPin, LOW);
@@ -1392,6 +1574,10 @@ void setup() {
   ConsumerControl.begin();
   Gamepad.begin();
   USB.begin();
+
+  if (cfg.wifiMode) {
+    initWiFiMode();
+  }
 
   NimBLEDevice::init("ESP32-S3-HID-Bridge");
   NimBLEDevice::setSecurityAuth(true, false, true);
@@ -1445,6 +1631,7 @@ void loop() {
     }
   }
 
+  checkWiFiConnection();
   updateLedEngine();
   delay(5);
 }
