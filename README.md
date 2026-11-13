@@ -1,6 +1,6 @@
 <div align="center">
 
-![ESP32 BLE Bridge Logo](esp32_s3_ble_bridge/logo.png)
+<img src="pic/logo.png" width="200" alt="ESP32 BLE Bridge Logo">
 
 # ESP32 BLE Bridge
 
@@ -17,7 +17,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-green?style=flat-square)](LICENSE)
 [![Made with AI](https://img.shields.io/badge/Made%20with-Claude%2C%20Gemini%2C%20ChatGPT-6C63FF?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
 
-**[🚀 Быстрый старт](#быстрый-старт)** • **[✨ Возможности](#возможности)** • **[📦 Установка](#установка)** • **[🌐 Web Console](#web-консоль)**
+**[🚀 Быстрый старт](#быстрый-старт)** • **[✨ Возможности](#возможности)** • **[🌐 Web Console](#web-console)** • **[📋 Устройства](#поддерживаемые-устройства)**
 
 </div>
 
@@ -51,17 +51,18 @@ BLE-клавиатура/мышь → ESP32-S3 → USB HID → Компьюте�
 
 ## 📊 Оборудование
 
-### ESP32-S3 Mini DevBoard
+### ESP32-S3 Zero Mini
 
-![ESP32-S3 Mini](https://github.com/espressif/esp-dev-kits/raw/master/esp32-s3-mini/docs/img/esp32-s3-mini-devkit_800x616.png)
+<img src="pic/esp32-s3-zero-mini.jpg" width="250" alt="ESP32-S3 Zero Mini">
 
 **Характеристики:**
+- ⚡ **Супер-компактная** — размером с монету
 - Native USB-C (USB-OTG + HID)
 - Bluetooth 5.3 LE
 - Dual-core 240 MHz
 - 8 MB PSRAM + 8 MB Flash
 - GPIO 21: WS2812 LED (индикация)
-- 30+ GPIO pins
+- Идеально подходит для портативных адаптеров
 
 **Требуемые версии:**
 | Компонент | Версия |
