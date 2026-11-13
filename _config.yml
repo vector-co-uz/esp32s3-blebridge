@@ -1,0 +1,4 @@
+theme: jekyll-theme-minimal
+markdown: GFM
+title: ESP32 BLE Bridge
+description: Универсальный мост между BLE-клавиатурой и USB компьютером
