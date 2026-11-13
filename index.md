@@ -118,7 +118,7 @@ BLE-клавиатура/мышь → ESP32-S3 → USB HID → Компьюте�
 
 ---
 
-## 🌐 Web Console
+## 🌐 [Web Console](https://github.com/vector-co-uz/esp32s3-blebridge/blob/main/web/web_console.html)
 
 Встроенная веб-консоль управления через **WebSerial API** для управления адаптером прямо из браузера (Chrome, Edge, Brave).
 
@@ -131,8 +131,17 @@ BLE-клавиатура/мышь → ESP32-S3 → USB HID → Компьюте�
 - 🎮 Демо-режим для тестирования
 - 🚀 OTA-обновление прошивки
 
-![Web Console Screenshot](web/web_console.html)
-*Скриншот Web Console (добавить реальное изображение)*
+
+
+
+<div align="center" style="margin: 30px 0;">
+Скриншот интерфейса
+
+<a href="pic/web_console.png" title="Нажмите для увеличения">
+<img src="pic/web_console.png" width="500" alt="Web Console Screenshot" style="border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); cursor: pointer;">
+</a>
+
+</div>
 
 ---
 
