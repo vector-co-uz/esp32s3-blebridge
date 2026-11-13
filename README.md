@@ -9,7 +9,7 @@
 > Передай свою BLE-клавиатуру компьютеру как обычное USB HID-устройство.
 > Никаких драйверов, никакого софта, никаких хлопот. 🎯
 
-**[🌐 Открыть Web Console](https://github.com/vector-co-uz/esp32s3-blebridge/blob/main/web/web_console.html)** — начните настройку прямо сейчас!
+**[🌐 Открыть Web Console](https://vector-co-uz.github.io/esp32s3-blebridge/web/web_console.html)** — начните настройку прямо сейчас!
 
 Адаптер на базе ESP32-S3, который подключается к BLE HID-устройствам и передаёт их ввод на компьютер как проводное USB-устройство.
 
