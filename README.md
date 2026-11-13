@@ -2,7 +2,8 @@
 
 <img src="pic/logo.png" width="200" alt="ESP32 BLE Bridge Logo">
 
-# ESP32 BLE Bridge
+# [ESP32 BLE Bridge](https://vector-co-uz.github.io/esp32s3-blebridge/)
+
 
 **Универсальный мост между BLE-клавиатурой и USB компьютером**
 
@@ -118,7 +119,7 @@ BLE-клавиатура/мышь → ESP32-S3 → USB HID → Компьюте�
 
 ---
 
-## 🌐 [Web Console](https://github.com/vector-co-uz/esp32s3-blebridge/blob/main/web/web_console.html)
+## 🌐 [Web Console](https://vector-co-uz.github.io/esp32s3-blebridge/web/web_console.html)
 
 Встроенная веб-консоль управления через **WebSerial API** для управления адаптером прямо из браузера (Chrome, Edge, Brave).
 
