@@ -6,4 +6,5 @@ kramdown:
 title: ESP32 BLE Bridge
 description: Универсальный мост между BLE-клавиатурой и USB компьютером
 show_downloads: false
-logo: pic/logo.png
+logo: /esp32s3-blebridge/pic/logo.png
+repository: vector-co-uz/esp32s3-blebridge

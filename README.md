@@ -1,14 +1,15 @@
 <div align="center">
 
-<img src="pic/logo.png" width="200" alt="ESP32 BLE Bridge Logo">
+<img src="/esp32s3-blebridge/pic/logo.png" width="200" alt="ESP32 BLE Bridge Logo">
 
-# [ESP32 BLE Bridge](https://vector-co-uz.github.io/esp32s3-blebridge/)
-
+# ESP32 BLE Bridge
 
 **Универсальный мост между BLE-клавиатурой и USB компьютером**
 
 > Передай свою BLE-клавиатуру компьютеру как обычное USB HID-устройство.
 > Никаких драйверов, никакого софта, никаких хлопот. 🎯
+
+**[🌐 Открыть Web Console](https://github.com/vector-co-uz/esp32s3-blebridge/blob/main/web/web_console.html)** — начните настройку прямо сейчас!
 
 Адаптер на базе ESP32-S3, который подключается к BLE HID-устройствам и передаёт их ввод на компьютер как проводное USB-устройство.
 
@@ -52,7 +53,7 @@ BLE-клавиатура/мышь → ESP32-S3 → USB HID → Компьюте�
 
 ### ESP32-S3 Zero Mini
 
-<img src="pic/esp32-s3-zero-mini.jpg" width="250" alt="ESP32-S3 Zero Mini">
+<img src="/esp32s3-blebridge/pic/esp32-s3-zero-mini.jpg" width="250" alt="ESP32-S3 Zero Mini">
 
 **Характеристики:**
 - ⚡ **Супер-компактная** — размером с монету
@@ -139,8 +140,8 @@ BLE-клавиатура/мышь → ESP32-S3 → USB HID → Компьюте�
 
 Скриншот интерфейса:
 
-<a href="pic/web_console.png" title="Нажмите для увеличения">
-<img src="pic/web_console.png" width="500" alt="Web Console Screenshot" style="border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); cursor: pointer;">
+<a href="/esp32s3-blebridge/pic/web_console.png" title="Нажмите для увеличения">
+<img src="/esp32s3-blebridge/pic/web_console.png" width="500" alt="Web Console Screenshot" style="border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); cursor: pointer;">
 </a>
 
 </div>
