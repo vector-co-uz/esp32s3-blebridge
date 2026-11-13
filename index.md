@@ -1,5 +1,8 @@
 <div align="center">
 
+### 🌐 Language
+[English](README.md) • [Русский (Russian)](README.ru.md)
+
 <img src="/pic/logo.png" width="200" alt="ESP32 BLE Bridge Logo">
 
 # ESP32 BLE Bridge
@@ -18,8 +21,6 @@ An ESP32-S3 based adapter that connects to BLE HID devices and transmits their i
 [![Arduino](https://img.shields.io/badge/Arduino-Core%203.3-00979D?style=flat-square&logo=arduino&logoColor=white)](https://github.com/espressif/arduino-esp32)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green?style=flat-square)](LICENSE)
 [![Made with AI](https://img.shields.io/badge/Made%20with-Claude%2C%20Gemini%2C%20ChatGPT-6C63FF?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
-
-[📖 Russian / Русский](README.ru.md)
 
 </div>
 

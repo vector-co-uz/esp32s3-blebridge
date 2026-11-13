@@ -1,5 +1,8 @@
 <div align="center">
 
+### 🌐 Язык
+[English (Английский)](README.md) • [Русский](README.ru.md)
+
 <img src="/pic/logo.png" width="200" alt="ESP32 BLE Bridge Logo">
 
 # ESP32 BLE Bridge
@@ -18,8 +21,6 @@
 [![Arduino](https://img.shields.io/badge/Arduino-Core%203.3-00979D?style=flat-square&logo=arduino&logoColor=white)](https://github.com/espressif/arduino-esp32)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green?style=flat-square)](LICENSE)
 [![Made with AI](https://img.shields.io/badge/Made%20with-Claude%2C%20Gemini%2C%20ChatGPT-6C63FF?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
-
-[📖 English / Английский](README.md)
 
 </div>
 
