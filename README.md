@@ -19,7 +19,7 @@ An ESP32-S3 based adapter that connects to BLE HID devices and transmits their i
 [![License](https://img.shields.io/badge/license-Apache%202.0-green?style=flat-square)](LICENSE)
 [![Made with AI](https://img.shields.io/badge/Made%20with-Claude%2C%20Gemini%2C%20ChatGPT-6C63FF?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
 
-[📖 Russian / Русский](README_RU.md)
+[📖 Russian / Русский](README.ru.md)
 
 </div>
 
