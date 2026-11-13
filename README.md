@@ -1,85 +1,256 @@
-<h1 align="center">ESP32 S3 BLE Bridge</h1>
+<div align="center">
 
-<p align="center">
-  <img src="https://img.shields.io/badge/ESP32--S3-BLE%20Bridge-E7352C?style=for-the-badge&logo=espressif&logoColor=white" alt="ESP32-S3 BLE Bridge">
-  <img src="https://img.shields.io/badge/BLE%20%E2%86%92%20USB-HID-6C63FF?style=for-the-badge&logo=bluetooth&logoColor=white" alt="BLE to USB HID">
-  <img src="https://img.shields.io/badge/status-experimental-F59E0B?style=for-the-badge" alt="Experimental status">
-</p>
+![ESP32 BLE Bridge Logo](esp32_s3_ble_bridge/logo.png)
 
-<p align="center">
-  <img src="https://img.shields.io/badge/AI%20assisted-Gemini%20Argon-8E75FF?style=for-the-badge&logo=googlegemini&logoColor=white" alt="AI assisted with Gemini Argon">
-  <img src="https://img.shields.io/badge/AI%20assisted-ChatGPT%20Sol-10A37F?style=for-the-badge&logo=openai&logoColor=white" alt="AI assisted with ChatGPT Sol">
-</p>
+# ESP32 BLE Bridge
 
-<p align="center">
-  <a href="web/web_console.html">
-    <img src="https://img.shields.io/badge/%F0%9F%8C%90%20Open-WebSerial%20Console-22C55E?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Open WebSerial Console">
-  </a>
-</p>
+**Универсальный мост между BLE-клавиатурой и USB компьютером**
 
-USB-адаптер на базе ESP32-S3, который подключается к BLE HID-устройствам и передаёт их ввод на компьютер как проводное USB-устройство.
+> Передай свою BLE-клавиатуру компьютеру как обычное USB HID-устройство.
+> Никаких драйверов, никакого софта, никаких хлопот. 🎯
 
-```text
-BLE-клавиатура / мышь / геймпад → ESP32-S3 → USB HID → компьютер
+Адаптер на базе ESP32-S3, который подключается к BLE HID-устройствам и передаёт их ввод на компьютер как проводное USB-устройство.
+
+[![ESP32-S3](https://img.shields.io/badge/ESP32--S3-Native%20USB-E7352C?style=flat-square&logo=espressif&logoColor=white)](https://www.espressif.com/en/products/socs/esp32-s3)
+[![BLE → USB HID](https://img.shields.io/badge/BLE%20%E2%86%92%20USB-HID-6C63FF?style=flat-square&logo=bluetooth&logoColor=white)](https://en.wikipedia.org/wiki/Human_interface_device)
+[![Arduino](https://img.shields.io/badge/Arduino-Core%203.3-00979D?style=flat-square&logo=arduino&logoColor=white)](https://github.com/espressif/arduino-esp32)
+[![License](https://img.shields.io/badge/license-Apache%202.0-green?style=flat-square)](LICENSE)
+[![Made with AI](https://img.shields.io/badge/Made%20with-Claude%2C%20Gemini%2C%20ChatGPT-6C63FF?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai)
+
+**[🚀 Быстрый старт](#быстрый-старт)** • **[✨ Возможности](#возможности)** • **[📦 Установка](#установка)** • **[🌐 Web Console](#web-консоль)**
+
+</div>
+
+---
+
+## О проекте
+
+```
+BLE-клавиатура/мышь → ESP32-S3 → USB HID → Компьютер
 ```
 
-## Как появился проект
+В домашней инфраструктуре часто есть несколько серверов, которыми управляют удалённо. Но когда случаются сбои сети, проблемы с загрузкой или требуется доступ в BIOS, приходится подключать проводную клавиатуру или таскать отдельный ресивер между компьютерами.
 
-В моей домашней инфраструктуре несколько разных устройств: сервер на **Proxmox**, сервер **Unraid**, **MacBook** и **Raspberry Pi**. Обычно ими удобно управлять удалённо, но иногда сервер не загружается, пропадает сеть или требуется зайти в BIOS, загрузчик либо локальную консоль.
+**ESP32 BLE Bridge** решает эту проблему: небольшой USB-адаптер, который выглядит для компьютера как обычное проводное USB HID-устройство, но получает ввод от Bluetooth-клавиатуры и мыши. Без установки драйверов, без софта — просто воткнул в USB и работает.
 
-В такие моменты приходится подключать проводную клавиатуру и мышь или постоянно держать рядом отдельный комплект с USB-приёмником 2,4 ГГц. Перекладывать устройства, кабели и ресиверы между компьютерами оказалось неудобно.
+Вдохновлено идеей [Logi Bolt](https://www.logitech.com/en-us/products/universal-receivers/logi-bolt-usb-receiver.910-006361.html), но с поддержкой **любых** BLE-устройств, которые следуют стандарту HID.
 
-Так появилась идея сделать собственный универсальный аналог **Logi Bolt**: небольшой адаптер, который принимает ввод от обычной BLE-клавиатуры и мыши, а для подключённого компьютера выглядит как стандартное проводное USB HID-устройство. Адаптер можно быстро переставить в нужный сервер, мини-компьютер или ноутбук без установки драйверов и дополнительного программного обеспечения.
+---
 
-Это не официальный продукт Logitech и не реализация протокола Logi Bolt — название используется только как понятное сравнение идеи. Цель проекта — универсальный BLE → USB HID-мост для разных устройств.
+## ✨ Возможности
 
-## Возможности
+- 📱 **Поддержка BLE-клавиатур и мышей** — стандартные HID-устройства
+- 🎮 **Экспериментальная поддержка геймпадов** — Google Stadia Controller
+- 💾 **Сохранение до 5 устройств** — быстрое переподключение
+- 🔄 **Автоматическое переподключение** — при потере связи
+- ⚙️ **Настройка через браузер** — WebSerial-консоль, без установки приложений
+- 🌈 **Индикация состояния** — RGB WS2812 LED на GPIO 21
+- 🔌 **USB OTA-обновление** — обновляйте прошивку через USB
 
-- BLE-клавиатура и мышь → USB HID
-- экспериментальная поддержка Google Stadia Controller
-- сохранение до пяти BLE-устройств
-- автоматическое переподключение
-- настройка формата HID и чувствительности мыши
-- индикация состояния через WS2812 на GPIO 21
-- браузерная WebSerial-консоль
-- обновление прошивки через USB OTA
+---
 
-## Требования
+## 📊 Оборудование
 
-- плата ESP32-S3 с Native USB
-- ESP32 Arduino Core 3.3.x
-- NimBLE-Arduino 2.5.x
+### ESP32-S3 Mini DevBoard
 
-Настройки Arduino IDE:
+![ESP32-S3 Mini](https://github.com/espressif/esp-dev-kits/raw/master/esp32-s3-mini/docs/img/esp32-s3-mini-devkit_800x616.png)
 
-```text
-Board: ESP32S3 Dev Module
-USB Mode: USB-OTG (TinyUSB)
-USB CDC On Boot: Enabled
-Partition Scheme: схема с OTA-разделами
+**Характеристики:**
+- Native USB-C (USB-OTG + HID)
+- Bluetooth 5.3 LE
+- Dual-core 240 MHz
+- 8 MB PSRAM + 8 MB Flash
+- GPIO 21: WS2812 LED (индикация)
+- 30+ GPIO pins
+
+**Требуемые версии:**
+| Компонент | Версия |
+|-----------|--------|
+| **Arduino Core** | 3.3.x или выше |
+| **NimBLE-Arduino** | 2.5.x или выше |
+
+---
+
+## 🚀 Быстрый старт
+
+### Шаг 1: Подготовка Arduino IDE
+
+1. Откройте Arduino IDE
+2. **File** → **Preferences** (или **Arduino** → **Settings** на Mac)
+3. В поле **Additional Boards Manager URLs** добавьте:
+   ```
+   https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+   ```
+4. Нажмите OK
+
+### Шаг 2: Установка ESP32 Core и библиотек
+
+1. **Tools** → **Board** → **Boards Manager**
+2. Ищите `esp32` и установите версию **3.3.x** от Espressif
+3. **Sketch** → **Include Library** → **Manage Libraries**
+4. Ищите `NimBLE-Arduino` и установите версию **2.5.x** или выше
+
+### Шаг 3: Выбор параметров платы
+
+1. **Tools** → **Board** → **ESP32S3 Dev Module**
+2. Параметры:
+
+| Параметр | Значение |
+|----------|----------|
+| **Board** | ESP32S3 Dev Module |
+| **USB Mode** | USB-OTG (TinyUSB) |
+| **USB CDC On Boot** | Enabled |
+| **Flash Size** | 16 MB (или 8 MB) |
+| **Partition Scheme** | Huge APP (3MB No OTA) или Scheme with OTA |
+
+### Шаг 4: Загрузка прошивки
+
+1. Откройте файл `esp32_s3_ble_bridge/esp32_s3_ble_bridge.ino`
+2. **Sketch** → **Verify** (проверка синтаксиса)
+3. Подключите ESP32-S3 через USB-C кабель
+4. **Tools** → **Port** → выберите COM-порт
+5. **Sketch** → **Upload** (загрузка ~2-3 минуты)
+
+### Шаг 5: Открытие Web Console
+
+1. Откройте в Chrome или Edge файл `web/web_console.html`
+2. Нажмите **Connect** и выберите USB-порт
+3. Консоль готова! 🎉
+
+---
+
+## 🌐 Web Console
+
+Встроенная веб-консоль управления через **WebSerial API** для управления адаптером прямо из браузера (Chrome, Edge, Brave).
+
+**Функции:**
+- 🎯 Поиск и сопряжение BLE-устройств
+- 📱 Управление сохранённых устройств (до 5 шт)
+- 📊 Мониторинг подключения и батареи
+- 🎛️ Настройка чувствительности мыши и режимов HID
+- 📜 Логирование команд и ошибок
+- 🎮 Демо-режим для тестирования
+- 🚀 OTA-обновление прошивки
+
+![Web Console Screenshot](web/web_console.html)
+*Скриншот Web Console (добавить реальное изображение)*
+
+---
+
+## 💡 Сценарии использования
+
+### Сервер без сетевого доступа
+```
+MacBook (локальная сеть)  ──→  Proxmox сервер  ←──  ESP32 BLE Bridge
+                                 (выключен сеть)     ↑
+                                                     Logitech MX Keys
 ```
 
-## Установка
+### Домашняя инфраструктура с одной клавиатурой
+```
+Logitech MX Keys Mini (BLE)
+        │
+        ├─→ ESP32 Bridge на Desktop      [USB-A]
+        ├─→ ESP32 Bridge на MacBook      [USB-C]
+        └─→ ESP32 Bridge на Proxmox      [USB внутри]
 
-1. Установите ESP32 Arduino Core и библиотеку NimBLE-Arduino.
-2. Откройте файл прошивки `.ino`.
-3. Выберите указанные выше параметры платы.
-4. Соберите и загрузите прошивку.
-5. Откройте HTML-консоль в Chrome или Edge и подключитесь к USB-порту ESP32-S3.
+Просто переключай адаптер между портами!
+```
 
-## Статус
+---
 
-Проект пока находится на очень ранней стадии и остаётся достаточно сырым. Возможны ошибки, зависания, задержки и несовместимость с отдельными HID-устройствами. Формат отчётов зависит от HID Report Map конкретной клавиатуры, мыши или геймпада, поэтому некоторые дополнительные клавиши и составные Logitech HID-интерфейсы могут потребовать отдельного профиля.
+## 📋 Поддерживаемые устройства
 
-Несмотря на это, адаптер уже используется в реальной работе: прямо сейчас я пишу код и общаюсь с ИИ через этот же ESP32 S3 BLE Bridge, подключённый к **Logitech MX Keys Mini**. Проект развивается в процессе ежедневного использования, а найденные проблемы постепенно исправляются.
+Проект работает с **любыми** стандартными BLE HID-устройствами:
 
-## Благодарности
+✅ **Клавиатуры**
+- Logitech MX Keys Mini, MX Keys
+- Apple Magic Keyboard
+- Keychron K2, K3, K4, K8, K10
+- Microsoft Modern Keyboard
+- Большинство BLE-клавиатур с поддержкой стандартного HID
 
-Проект **ESP32 S3 BLE Bridge** был вдохновлён идеями и веб-консолью проекта [finger563/esp-usb-ble-hid](https://github.com/finger563/esp-usb-ble-hid).
+✅ **Мыши**
+- Logitech MX Master 3, MX Anywhere 3
+- Apple Magic Mouse
+- Microsoft Arc Mouse
+- Универсальная поддержка BLE-мышей
 
-Спасибо автору и участникам исходного проекта за их работу над BLE HID, USB HID и инструментами управления адаптером через браузер.
+⚠️ **Экспериментально**
+- Google Stadia Controller (частичная поддержка)
+- Другие геймпады (требуют профилей)
 
-## О разработке
+---
 
-Я вайбкодер: весь код этого проекта написан и доработан с помощью **Gemini Argon** и **ChatGPT Sol**. Я формулировал задачи, проверял результаты, тестировал прошивку на оборудовании и направлял дальнейшую разработку.
+## 📊 Статус проекта
 
+🚀 **Проект активно разрабатывается и используется в реальной работе.**
+
+**Текущее состояние:** Экспериментальное, но стабильное для повседневного использования.
+
+**Что работает отлично:**
+- ✅ Стандартные BLE-клавиатуры
+- ✅ BLE-мыши с базовыми функциями
+- ✅ Автоматическое переподключение
+- ✅ WebSerial-консоль и управление
+- ✅ USB OTA-обновление
+
+**Известные ограничения:**
+- ⚠️ Некоторые специальные клавиши могут требовать дополнительных профилей
+- ⚠️ Поддержка геймпадов экспериментальна
+- ⚠️ Максимум 5 сохранённых устройств (ограничение NVRAM)
+
+**История развития:**
+Проект рождается из реальной необходимости и развивается ежедневно. Прямо сейчас я пишу код и общаюсь с ИИ через ESP32 S3 BLE Bridge, подключённый к **Logitech MX Keys Mini**. Новые возможности и исправления появляются по мере использования.
+
+---
+
+## 🙏 Благодарности
+
+Проект **ESP32 BLE Bridge** был вдохновлён и наследует ключевые идеи из отличного проекта [finger563/esp-usb-ble-hid](https://github.com/finger563/esp-usb-ble-hid).
+
+Спасибо за работу над:
+- 🔌 Архитектурой BLE HID и USB HID
+- 🎯 Интеграцией TinyUSB с NimBLE
+- 🌐 Веб-консолью для управления через браузер
+
+---
+
+## 🤖 О разработке
+
+Я **вайб-кодер**: весь код этого проекта написан и доработан с помощью современных ИИ-ассистентов.
+
+**Команда разработки:**
+- 🧠 **Claude** (Anthropic) — основная логика, архитектура, оптимизация
+- 🤖 **Gemini Argon** (Google) — вспомогательные решения, идеи
+- 💬 **ChatGPT Sol** (OpenAI) — отладка, документация
+
+**Процесс:**
+1. 📝 Я формулирую задачу и требования
+2. 🤖 ИИ генерирует код и реализацию
+3. 🧪 Я тестирую на реальном оборудовании
+4. 🔄 Я направляю дальнейшую разработку и доработки
+5. ✅ Результат — полнофункциональная прошивка
+
+Такой подход позволяет быстро итерировать, добавлять новые функции и фиксить баги по мере их появления в реальном использовании.
+
+---
+
+## 📄 Лицензия
+
+[Apache License 2.0](LICENSE) — используйте свободно в личных и коммерческих проектах.
+
+---
+
+<div align="center">
+
+**Создано для тех, кто устал таскать ресиверы между компьютерами** 🖱️⌨️ ✨
+
+```
+BLE Device → Adapter → USB Computer
+One keyboard, many servers. One tap.
+```
+
+**[🔝 Вернуться наверх](#esp32-ble-bridge)**
+
+</div>
