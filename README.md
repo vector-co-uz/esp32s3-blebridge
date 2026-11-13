@@ -135,7 +135,8 @@ BLE-клавиатура/мышь → ESP32-S3 → USB HID → Компьюте�
 
 
 <div align="center" style="margin: 30px 0;">
-Скриншот интерфейса
+
+Скриншот интерфейса:
 
 <a href="pic/web_console.png" title="Нажмите для увеличения">
 <img src="pic/web_console.png" width="500" alt="Web Console Screenshot" style="border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); cursor: pointer;">
